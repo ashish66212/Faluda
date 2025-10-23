@@ -110,6 +110,16 @@
             android:paddingStart="4dp" />
     </LinearLayout>
 
+    <!-- Update API Button -->
+    <Button
+        android:id="@+id/updateApiButton"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:text="🔗 Update API"
+        android:textSize="12sp"
+        android:layout_marginTop="4dp"
+        android:background="@android:drawable/btn_default" />
+
     <!-- LIVE LOG VIEW - NEW -->
     <TextView
         android:layout_width="match_parent"

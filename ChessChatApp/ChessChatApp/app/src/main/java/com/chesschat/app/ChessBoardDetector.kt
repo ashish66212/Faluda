@@ -422,6 +422,130 @@ class ChessBoardDetector {
     }
     
     /**
+     * IMPROVED: Detect moves by analyzing square-by-square changes
+     * More accurate than contour-based approach for chess move detection
+     */
+    fun detectMovesSquareBySquare(
+        previousMat: Mat,
+        currentMat: Mat,
+        boardWidth: Int,
+        boardHeight: Int,
+        isFlipped: Boolean
+    ): List<String> {
+        try {
+            val squareWidth = boardWidth / 8
+            val squareHeight = boardHeight / 8
+            
+            val prevGray = Mat()
+            val currGray = Mat()
+            Imgproc.cvtColor(previousMat, prevGray, Imgproc.COLOR_RGBA2GRAY)
+            Imgproc.cvtColor(currentMat, currGray, Imgproc.COLOR_RGBA2GRAY)
+            
+            val removedSquares = mutableListOf<Pair<Int, Int>>()
+            val addedSquares = mutableListOf<Pair<Int, Int>>()
+            
+            // Analyze each square individually
+            for (row in 0 until 8) {
+                for (col in 0 until 8) {
+                    val x = col * squareWidth
+                    val y = row * squareHeight
+                    val w = squareWidth
+                    val h = squareHeight
+                    
+                    // Extract square regions
+                    val prevSquare = Mat(prevGray, Rect(x, y, w, h))
+                    val currSquare = Mat(currGray, Rect(x, y, w, h))
+                    
+                    // Calculate absolute difference
+                    val diff = Mat()
+                    Core.absdiff(prevSquare, currSquare, diff)
+                    val diffMean = Core.mean(diff).`val`[0]
+                    
+                    // Calculate standard deviation (indicates piece presence)
+                    val prevMean = MatOfDouble()
+                    val prevStdDev = MatOfDouble()
+                    val currMean = MatOfDouble()
+                    val currStdDev = MatOfDouble()
+                    
+                    Core.meanStdDev(prevSquare, prevMean, prevStdDev)
+                    Core.meanStdDev(currSquare, currMean, currStdDev)
+                    
+                    val prevStd = prevStdDev.get(0, 0)[0]
+                    val currStd = currStdDev.get(0, 0)[0]
+                    val stdDiff = currStd - prevStd
+                    
+                    // Detect significant changes
+                    if (diffMean > 10.0) {  // Significant change threshold
+                        if (stdDiff < -8.0) {
+                            // Piece removed (texture decreased)
+                            removedSquares.add(Pair(row, col))
+                            Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: piece removed (stdDiff=$stdDiff)")
+                        } else if (stdDiff > 8.0) {
+                            // Piece added (texture increased)
+                            addedSquares.add(Pair(row, col))
+                            Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: piece added (stdDiff=$stdDiff)")
+                        }
+                    }
+                    
+                    // Clean up
+                    prevSquare.release()
+                    currSquare.release()
+                    diff.release()
+                    prevMean.release()
+                    prevStdDev.release()
+                    currMean.release()
+                    currStdDev.release()
+                }
+            }
+            
+            Log.d(TAG, "Detected ${removedSquares.size} removed, ${addedSquares.size} added squares")
+            
+            // Match removed squares with added squares to form moves
+            val moves = mutableListOf<String>()
+            val usedAdded = mutableSetOf<Int>()
+            
+            for (removed in removedSquares) {
+                // Find closest added square (Manhattan distance)
+                var bestAddIdx = -1
+                var bestDist = Int.MAX_VALUE
+                
+                for ((idx, added) in addedSquares.withIndex()) {
+                    if (idx in usedAdded) continue
+                    
+                    val dist = Math.abs(removed.first - added.first) + 
+                              Math.abs(removed.second - added.second)
+                    if (dist < bestDist) {
+                        bestDist = dist
+                        bestAddIdx = idx
+                    }
+                }
+                
+                if (bestAddIdx >= 0) {
+                    usedAdded.add(bestAddIdx)
+                    val added = addedSquares[bestAddIdx]
+                    
+                    val fromSquare = squareToUCI(removed.first, removed.second, isFlipped)
+                    val toSquare = squareToUCI(added.first, added.second, isFlipped)
+                    val move = fromSquare + toSquare
+                    
+                    moves.add(move)
+                    Log.d(TAG, "Move detected: $move")
+                }
+            }
+            
+            prevGray.release()
+            currGray.release()
+            
+            return moves
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in square-by-square detection: ${e.message}")
+            e.printStackTrace()
+            return emptyList()
+        }
+    }
+    
+    /**
      * LEGACY METHODS - Kept for backward compatibility but not used
      * These methods use the old piece-detection approach
      */

@@ -36,6 +36,13 @@ object ChessAppProfiles {
             frameRateLimit = 1000
         ),
         ChessAppProfile(
+            appName = "Miniclip Chess",
+            packageName = "com.miniclip.chess",
+            captureDelay = 800,
+            useSoftwareRenderer = false,
+            frameRateLimit = 800
+        ),
+        ChessAppProfile(
             appName = "Generic",
             packageName = "",
             captureDelay = 0,

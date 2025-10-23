@@ -84,7 +84,7 @@ class MoveDetectionOverlayService : Service() {
     
     // App Profile
     private var currentProfile: ChessAppProfile = ChessAppProfiles.profiles.last()
-    private var detectionInterval = 200L  // Fast detection for immediate response (200ms)
+    private var detectionInterval = 100L  // Optimized detection interval (100ms for balance of speed and accuracy)
     
     // Network
     private val client = OkHttpClient.Builder()
@@ -146,11 +146,9 @@ class MoveDetectionOverlayService : Service() {
             saveSettings()
             
             if (resultCode != 0 && data != null) {
-                addLog("onStartCommand", "Delay ${currentProfile.captureDelay}ms before capture")
-                // Apply capture delay from app profile
-                handler.postDelayed({
-                    startScreenCapture(resultCode, data)
-                }, currentProfile.captureDelay)
+                addLog("onStartCommand", "Starting screen capture immediately (0ms)")
+                // Start immediately - no delay for maximum responsiveness
+                startScreenCapture(resultCode, data)
             }
         }
         return START_STICKY
@@ -569,28 +567,25 @@ class MoveDetectionOverlayService : Service() {
     }
     
     /**
-     * Resume detection IMMEDIATELY after executing an automated move
-     * This captures a fresh baseline and starts detecting for opponent's response
-     * No delay - detection starts instantly for fast response time
+     * Resume detection IMMEDIATELY (0ms) after executing an automated move
+     * Captures fresh baseline and starts detecting for opponent's response instantly
      */
     private fun resumeDetectionImmediately() {
-        addLog("resumeDetectionImmediately", "=== IMMEDIATE DETECTION RESUME ===")
+        addLog("resumeDetectionImmediately", "=== INSTANT DETECTION START (0ms) ===")
         
         // Clear previous board state to start fresh
         previousBoardState = null
         addLog("resumeDetectionImmediately", "Cleared previous board state")
         
-        // Capture baseline immediately
-        addLog("resumeDetectionImmediately", "Capturing baseline now (0ms delay)")
-        captureScreen() // This will save as baseline since previousBoardState is null
-        
-        // Start continuous detection with interval for fast response
-        addLog("resumeDetectionImmediately", "Starting detection loop with ${detectionInterval}ms interval")
+        // Start detection loop immediately - no delay
         isDetecting = true
         updateStatus("🔍 Detecting...")
+        addLog("resumeDetectionImmediately", "Detection active with ${detectionInterval}ms interval")
+        
+        // Post immediately to start detection loop
         handler.post(detectionRunnable)
         
-        addLog("resumeDetectionImmediately", "Detection active - waiting for opponent move")
+        addLog("resumeDetectionImmediately", "Detection started instantly - waiting for opponent move")
     }
 
     private fun flipBoard() {
@@ -862,7 +857,7 @@ class MoveDetectionOverlayService : Service() {
         
         addLog("executeMoveAutomatically", "First tap SUCCESS at $fromSquare")
         
-        // Delay between taps (300ms to allow chess app to register selection)
+        // Minimal delay between taps (200ms to allow chess app to register selection)
         handler.postDelayed({
             addLog("executeMoveAutomatically", "Executing second tap at $toSquare")
             
@@ -872,15 +867,12 @@ class MoveDetectionOverlayService : Service() {
             )
             
             if (secondTapSuccess) {
-                addLog("executeMoveAutomatically", "SUCCESS - Move executed: $move (CLICK format)")
+                addLog("executeMoveAutomatically", "SUCCESS - Move executed: $move")
                 updateStatus("✅ Played: $move")
                 
-                // IMMEDIATELY start detection to catch opponent's response
-                // Wait just 10ms for animation to settle, then capture baseline and start detecting
-                addLog("executeMoveAutomatically", "Starting immediate detection for opponent move")
-                handler.postDelayed({
-                    resumeDetectionImmediately()
-                }, 10)
+                // Start detection IMMEDIATELY (0ms delay) after move execution
+                addLog("executeMoveAutomatically", "Restarting detection NOW (0ms delay)")
+                resumeDetectionImmediately()
             } else {
                 addLog("executeMoveAutomatically", "FAILED - Second tap failed")
                 addLog("executeMoveAutomatically", "Possible reasons:")
@@ -890,7 +882,7 @@ class MoveDetectionOverlayService : Service() {
                 updateStatus("⚠️ Second tap failed")
                 Toast.makeText(this, "Second tap failed - check accessibility", Toast.LENGTH_LONG).show()
             }
-        }, 300)
+        }, 200)
     }
     
     /**

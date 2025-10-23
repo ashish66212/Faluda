@@ -878,33 +878,36 @@ class MoveDetectionOverlayService : Service() {
     /**
      * Temporarily pause detection to avoid detecting our own automated move
      * Clears previous bitmap so detection starts fresh when resumed
+     * ALWAYS resumes detection after delay (auto-starts if not running)
      */
     private fun pauseDetectionTemporarily(delayMs: Long) {
+        addLog("pauseDetectionTemporarily", "=== PAUSING DETECTION ===")
+        addLog("pauseDetectionTemporarily", "Duration: ${delayMs}ms")
+        
+        // Stop detection if it was running
         if (isDetecting) {
-            addLog("pauseDetectionTemporarily", "=== PAUSING DETECTION ===")
-            addLog("pauseDetectionTemporarily", "Duration: ${delayMs}ms")
-            val wasDetecting = isDetecting
             isDetecting = false
             handler.removeCallbacks(detectionRunnable)
-            
-            // Clear previous bitmap so detection starts fresh after our automated move
-            addLog("pauseDetectionTemporarily", "Clearing previousBitmap to reset comparison")
-            bitmapPool.recycle(previousBitmap)
-            previousBitmap = null
-            addLog("pauseDetectionTemporarily", "Waiting for opponent to make their move...")
-            
-            handler.postDelayed({
-                if (wasDetecting) {
-                    addLog("pauseDetectionTemporarily", "=== RESUMING DETECTION ===")
-                    addLog("pauseDetectionTemporarily", "Next capture will establish baseline")
-                    addLog("pauseDetectionTemporarily", "Following capture will detect opponent move")
-                    isDetecting = true
-                    handler.post(detectionRunnable)
-                }
-            }, delayMs)
+            addLog("pauseDetectionTemporarily", "Detection was active - paused")
         } else {
-            addLog("pauseDetectionTemporarily", "SKIPPED - Detection not active")
+            addLog("pauseDetectionTemporarily", "Detection was not active - will start after pause")
         }
+        
+        // Clear previous bitmap so detection starts fresh after our automated move
+        addLog("pauseDetectionTemporarily", "Clearing previousBitmap to reset comparison")
+        bitmapPool.recycle(previousBitmap)
+        previousBitmap = null
+        addLog("pauseDetectionTemporarily", "Waiting for opponent to make their move...")
+        
+        // ALWAYS resume detection after delay (even if it wasn't running before)
+        handler.postDelayed({
+            addLog("pauseDetectionTemporarily", "=== RESUMING DETECTION ===")
+            addLog("pauseDetectionTemporarily", "Next capture will establish baseline")
+            addLog("pauseDetectionTemporarily", "Following capture will detect opponent move")
+            isDetecting = true
+            updateStatus("🔍 Detecting...")
+            handler.post(detectionRunnable)
+        }, delayMs)
     }
 
     /**

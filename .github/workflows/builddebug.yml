@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Debug APK
 
 on:
   push:
@@ -30,13 +30,15 @@ jobs:
             gradle-cache-${{ runner.os }}-
 
       - name: Grant execute permission for Gradle wrapper
-        run: chmod +x ./gradlew
+        run: chmod +x ChessChatApp/ChessChatApp/gradlew
 
-      - name: Build APK (module-specific)
-        run: ./gradlew :app:assembleDebug --no-daemon
+      - name: Build Debug APK
+        working-directory: ChessChatApp/ChessChatApp
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ChessChatApp/ChessChatApp/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

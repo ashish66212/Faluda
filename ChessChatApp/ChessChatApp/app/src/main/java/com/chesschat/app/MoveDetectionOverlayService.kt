@@ -386,7 +386,7 @@ class MoveDetectionOverlayService : Service() {
         layoutParams.y = dp(100)
 
         // Inflate the overlay layout
-        val overlayView = layoutInflater.inflate(R.layout.overlay_compact, null)
+        val overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_compact, null)
         
         // Get all button references
         val startButton = overlayView.findViewById<Button>(R.id.startButton)

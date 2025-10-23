@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         detectButton.setOnClickListener {
-            showBoardConfigDialog()
+            startMoveDetectionAutomatic()
             hideMenu()
         }
 
@@ -113,6 +113,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Start move detection with AUTOMATIC board detection
+     * No manual configuration needed - OpenCV detects board automatically
+     */
+    private fun startMoveDetectionAutomatic() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Overlay permission required", Toast.LENGTH_SHORT).show()
+                checkOverlayPermission()
+                return
+            }
+        }
+
+        appendToChat("🎯 Starting automatic board detection...\n")
+        appendToChat("OpenCV will detect the board position automatically.\n")
+
+        val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        startActivityForResult(
+            mediaProjectionManager.createScreenCaptureIntent(),
+            SCREEN_CAPTURE_REQUEST_CODE
+        )
+        
+        sharedPreferences.edit()
+            .putInt("pending_board_x", 0)
+            .putInt("pending_board_y", 0)
+            .putInt("pending_board_size", 0)
+            .apply()
+    }
+    
+    /**
+     * LEGACY: Manual board configuration dialog
+     * Kept for backward compatibility but replaced by automatic detection
+     */
     private fun showBoardConfigDialog() {
         val dialogView = layoutInflater.inflate(R.layout.board_config_dialog, null)
         val xInput = dialogView.findViewById<EditText>(R.id.boardXInput)

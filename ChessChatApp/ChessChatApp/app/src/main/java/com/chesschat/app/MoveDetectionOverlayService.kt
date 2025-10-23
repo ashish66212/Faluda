@@ -77,11 +77,12 @@ class MoveDetectionOverlayService : Service() {
     private var isDetecting = false
     private var isAutoPlayEnabled = false
     
-    // Board Configuration
+    // Board Configuration - will be auto-detected
     private var boardX = 50
     private var boardY = 300
     private var boardSize = 800
     private var isFlipped = false
+    private var boardAutoDetected = false  // Track if board has been automatically detected
     
     // App Profile
     private var currentProfile: ChessAppProfile = ChessAppProfiles.profiles.last()
@@ -672,6 +673,30 @@ class MoveDetectionOverlayService : Service() {
             )
             fullBitmap.copyPixelsFromBuffer(buffer)
             image.close()
+
+            // AUTOMATIC BOARD DETECTION on first capture
+            if (!boardAutoDetected) {
+                addLog("captureScreen", "=== AUTOMATIC BOARD DETECTION ===")
+                val detectedConfig = boardDetector.detectBoardAutomatically(fullBitmap)
+                
+                if (detectedConfig != null) {
+                    boardX = detectedConfig.x
+                    boardY = detectedConfig.y
+                    boardSize = detectedConfig.size
+                    isFlipped = !detectedConfig.isWhiteBottom  // Flip if black is on bottom
+                    boardAutoDetected = true
+                    
+                    saveSettings()
+                    
+                    addLog("captureScreen", "✓ Board auto-detected successfully!")
+                    addLog("captureScreen", "  Position: X=$boardX, Y=$boardY, Size=$boardSize")
+                    addLog("captureScreen", "  Orientation: ${if (detectedConfig.isWhiteBottom) "White bottom" else "Black bottom"}")
+                    updateStatus("✓ Board Detected")
+                } else {
+                    addLog("captureScreen", "⚠ Auto-detection failed, using defaults")
+                    updateStatus("⚠ Using defaults")
+                }
+            }
 
             val boardBitmap = extractBoardArea(fullBitmap)
             bitmapPool.recycle(fullBitmap)

@@ -67,6 +67,10 @@ class MoveDetectionOverlayService : Service() {
     private val bitmapPool = BitmapPool(maxPoolSize = 3)
     private var previousBitmap: Bitmap? = null
     
+    // OpenCV-based board detection
+    private val boardDetector = ChessBoardDetector()
+    private var previousBoardState: Array<IntArray>? = null
+    
     // Detection State
     private val handler = Handler(Looper.getMainLooper())
     private var isDetecting = false
@@ -572,16 +576,15 @@ class MoveDetectionOverlayService : Service() {
     private fun resumeDetectionImmediately() {
         addLog("resumeDetectionImmediately", "=== IMMEDIATE DETECTION RESUME ===")
         
-        // Clear previous bitmap to start fresh
-        bitmapPool.recycle(previousBitmap)
-        previousBitmap = null
-        addLog("resumeDetectionImmediately", "Cleared previous bitmap")
+        // Clear previous board state to start fresh
+        previousBoardState = null
+        addLog("resumeDetectionImmediately", "Cleared previous board state")
         
         // Capture baseline immediately
         addLog("resumeDetectionImmediately", "Capturing baseline now (0ms delay)")
-        captureScreen() // This will save as baseline since previousBitmap is null
+        captureScreen() // This will save as baseline since previousBoardState is null
         
-        // Start continuous detection with 200ms interval for fast response
+        // Start continuous detection with interval for fast response
         addLog("resumeDetectionImmediately", "Starting detection loop with ${detectionInterval}ms interval")
         isDetecting = true
         updateStatus("🔍 Detecting...")
@@ -650,7 +653,7 @@ class MoveDetectionOverlayService : Service() {
     private fun captureScreen() {
         var fullBitmap: Bitmap? = null
         try {
-            addLog("captureScreen", "CALLED - Capturing screen for move detection")
+            addLog("captureScreen", "CALLED - Capturing screen with OpenCV detection")
             
             val image = imageReader?.acquireLatestImage()
             if (image == null) {
@@ -676,24 +679,30 @@ class MoveDetectionOverlayService : Service() {
             val boardBitmap = extractBoardArea(fullBitmap)
             bitmapPool.recycle(fullBitmap)
             
-            if (previousBitmap != null) {
-                addLog("captureScreen", "Comparing with previous bitmap to detect move")
-                val move = detectMove(previousBitmap!!, boardBitmap)
+            // Use OpenCV to detect board state
+            addLog("captureScreen", "Analyzing board with OpenCV...")
+            val currentBoardState = boardDetector.detectBoardState(boardBitmap)
+            
+            if (previousBoardState != null) {
+                addLog("captureScreen", "Comparing board states to detect move")
+                val move = boardDetector.detectMove(previousBoardState!!, currentBoardState, isFlipped)
+                
                 if (move != null) {
                     addLog("captureScreen", "MOVE DETECTED: $move - Sending to engine")
                     onMoveDetected(move)
                 } else {
-                    addLog("captureScreen", "No valid move detected (not exactly 2 squares changed)")
+                    addLog("captureScreen", "No valid move detected")
                 }
-                bitmapPool.recycle(previousBitmap)
             } else {
-                addLog("captureScreen", "FIRST CAPTURE after pause - Saving as baseline (no comparison)")
+                addLog("captureScreen", "FIRST CAPTURE - Establishing baseline board state")
             }
             
-            previousBitmap = boardBitmap
-            addLog("captureScreen", "Saved current board state for next comparison")
+            previousBoardState = currentBoardState
+            boardBitmap.recycle()
+            addLog("captureScreen", "Board state saved for next comparison")
         } catch (e: Exception) {
             addLog("captureScreen", "ERROR - ${e.message}")
+            e.printStackTrace()
             bitmapPool.recycle(fullBitmap)
         }
     }
@@ -706,110 +715,6 @@ class MoveDetectionOverlayService : Service() {
             addLog("extractBoardArea", "ERROR - ${e.message}")
             fullBitmap
         }
-    }
-
-    private fun detectMove(oldBoard: Bitmap, newBoard: Bitmap): String? {
-        val squareSize = oldBoard.width / 8
-        val changes = mutableListOf<Pair<Int, Int>>()
-
-        addLog("detectMove", "Scanning 8x8 board (square size: ${squareSize}px)...")
-
-        for (row in 0 until 8) {
-            for (col in 0 until 8) {
-                val x = col * squareSize
-                val y = row * squareSize
-                
-                if (hasSquareChanged(oldBoard, newBoard, x, y, squareSize)) {
-                    val uciSquare = squareToUCI(row, col)
-                    addLog("detectMove", "  Change at screen(row=$row,col=$col) = $uciSquare")
-                    changes.add(Pair(row, col))
-                }
-            }
-        }
-
-        addLog("detectMove", "Total changed squares: ${changes.size}")
-
-        // Standard move: exactly 2 squares changed
-        if (changes.size == 2) {
-            val from = changes[0]
-            val to = changes[1]
-            val fromUCI = squareToUCI(from.first, from.second)
-            val toUCI = squareToUCI(to.first, to.second)
-            val move = fromUCI + toUCI
-            addLog("detectMove", "MOVE DETECTED: $move")
-            addLog("detectMove", "  From: $fromUCI (screen row=${from.first}, col=${from.second})")
-            addLog("detectMove", "  To: $toUCI (screen row=${to.first}, col=${to.second})")
-            return move
-        } else if (changes.size > 0) {
-            val changedSquares = changes.map { 
-                val uci = squareToUCI(it.first, it.second)
-                "(${it.first},${it.second})=$uci"
-            }
-            addLog("detectMove", "Invalid (${changes.size} squares changed): $changedSquares")
-        }
-        
-        return null
-    }
-
-    private fun hasSquareChanged(old: Bitmap, new: Bitmap, x: Int, y: Int, size: Int): Boolean {
-        var diffPixels = 0
-        val sampleRate = 4
-        val threshold = 0.12
-
-        for (dy in 0 until size step sampleRate) {
-            for (dx in 0 until size step sampleRate) {
-                if (x + dx < old.width && y + dy < old.height &&
-                    x + dx < new.width && y + dy < new.height) {
-                    
-                    val oldPixel = old.getPixel(x + dx, y + dy)
-                    val newPixel = new.getPixel(x + dx, y + dy)
-                    
-                    if (colorDifference(oldPixel, newPixel) > 25) {
-                        diffPixels++
-                    }
-                }
-            }
-        }
-
-        val totalSamples = (size / sampleRate) * (size / sampleRate)
-        return (diffPixels.toFloat() / totalSamples) > threshold
-    }
-
-    private fun colorDifference(color1: Int, color2: Int): Int {
-        val r1 = Color.red(color1)
-        val g1 = Color.green(color1)
-        val b1 = Color.blue(color1)
-        val r2 = Color.red(color2)
-        val g2 = Color.green(color2)
-        val b2 = Color.blue(color2)
-        
-        return Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2)
-    }
-
-    private fun squareToUCI(row: Int, col: Int): String {
-        // Screen coordinates: (0,0) = top-left
-        // Chess board (white at bottom): a1 = bottom-left, h8 = top-right
-        // Chess board (black at bottom/flipped): a1 = top-right, h8 = bottom-left
-        
-        val actualRow: Int
-        val actualCol: Int
-        
-        if (isFlipped) {
-            // Black at bottom: flip both row and column
-            actualRow = row
-            actualCol = 7 - col
-        } else {
-            // White at bottom: flip only row
-            actualRow = 7 - row
-            actualCol = col
-        }
-        
-        val file = ('a' + actualCol).toString()
-        val rank = (actualRow + 1).toString()
-        
-        addLog("squareToUCI", "Screen(row=$row,col=$col) → UCI=$file$rank (flipped=$isFlipped)")
-        
-        return "$file$rank"
     }
 
     private fun onMoveDetected(move: String) {
@@ -1006,10 +911,9 @@ class MoveDetectionOverlayService : Service() {
             addLog("pauseDetectionTemporarily", "Detection was not active - will start after pause")
         }
         
-        // Clear previous bitmap so detection starts fresh after our automated move
-        addLog("pauseDetectionTemporarily", "Clearing previousBitmap to reset comparison")
-        bitmapPool.recycle(previousBitmap)
-        previousBitmap = null
+        // Clear previous board state so detection starts fresh after our automated move
+        addLog("pauseDetectionTemporarily", "Clearing previousBoardState to reset comparison")
+        previousBoardState = null
         addLog("pauseDetectionTemporarily", "Waiting for opponent to make their move...")
         
         // ALWAYS resume detection after delay (even if it wasn't running before)

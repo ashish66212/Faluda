@@ -80,7 +80,7 @@ class MoveDetectionOverlayService : Service() {
     
     // App Profile
     private var currentProfile: ChessAppProfile = ChessAppProfiles.profiles.last()
-    private var detectionInterval = 1000L
+    private var detectionInterval = 200L  // Fast detection for immediate response (200ms)
     
     // Network
     private val client = OkHttpClient.Builder()
@@ -556,6 +556,32 @@ class MoveDetectionOverlayService : Service() {
         updateStatus("⚪ Stopped")
         addLog("stopDetection", "Detection stopped")
     }
+    
+    /**
+     * Resume detection IMMEDIATELY after executing an automated move
+     * This captures a fresh baseline and starts detecting for opponent's response
+     * No delay - detection starts instantly for fast response time
+     */
+    private fun resumeDetectionImmediately() {
+        addLog("resumeDetectionImmediately", "=== IMMEDIATE DETECTION RESUME ===")
+        
+        // Clear previous bitmap to start fresh
+        bitmapPool.recycle(previousBitmap)
+        previousBitmap = null
+        addLog("resumeDetectionImmediately", "Cleared previous bitmap")
+        
+        // Capture baseline immediately
+        addLog("resumeDetectionImmediately", "Capturing baseline now (0ms delay)")
+        captureScreen() // This will save as baseline since previousBitmap is null
+        
+        // Start continuous detection with 200ms interval for fast response
+        addLog("resumeDetectionImmediately", "Starting detection loop with ${detectionInterval}ms interval")
+        isDetecting = true
+        updateStatus("🔍 Detecting...")
+        handler.post(detectionRunnable)
+        
+        addLog("resumeDetectionImmediately", "Detection active - waiting for opponent move")
+    }
 
     private fun flipBoard() {
         isFlipped = !isFlipped
@@ -707,8 +733,12 @@ class MoveDetectionOverlayService : Service() {
     }
 
     private fun onMoveDetected(move: String) {
-        addLog("onMoveDetected", "USER MOVE: $move")
+        addLog("onMoveDetected", "OPPONENT MOVE DETECTED: $move")
         updateStatus("♟ Move: $move")
+        
+        // STOP detection immediately after detecting move
+        addLog("onMoveDetected", "Stopping detection until next auto-play execution")
+        stopDetection()
         
         // Send to Stockfish engine via Flask API
         if (ngrokUrl.isNotEmpty()) {
@@ -860,9 +890,12 @@ class MoveDetectionOverlayService : Service() {
                 addLog("executeMoveAutomatically", "SUCCESS - Move executed: $move (CLICK format)")
                 updateStatus("✅ Played: $move")
                 
-                // Pause detection after executing move to give opponent time and avoid self-detection
-                addLog("executeMoveAutomatically", "Pausing detection to wait for opponent move")
-                pauseDetectionTemporarily(2500)
+                // IMMEDIATELY start detection to catch opponent's response
+                // Wait just 100ms for animation to settle, then capture baseline and start detecting
+                addLog("executeMoveAutomatically", "Starting immediate detection for opponent move")
+                handler.postDelayed({
+                    resumeDetectionImmediately()
+                }, 100)
             } else {
                 addLog("executeMoveAutomatically", "FAILED - Second tap failed")
                 addLog("executeMoveAutomatically", "Possible reasons:")

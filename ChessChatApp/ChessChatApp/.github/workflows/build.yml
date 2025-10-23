@@ -1,0 +1,68 @@
+name: Android CI with Cache
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Cache Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+          ChessChatApp/ChessChatApp/.gradle
+        key: ${{ runner.os }}-gradle-${{ hashFiles('ChessChatApp/ChessChatApp/**/*.gradle*', 'ChessChatApp/ChessChatApp/**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x ChessChatApp/ChessChatApp/gradlew
+
+    - name: Build Debug APK
+      run: cd ChessChatApp/ChessChatApp && ./gradlew assembleDebug
+
+    - name: Build Release APK
+      run: cd ChessChatApp/ChessChatApp && ./gradlew assembleRelease
+
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: chess-automation-debug
+        path: ChessChatApp/ChessChatApp/app/build/outputs/apk/debug/*.apk
+        retention-days: 30
+
+    - name: Upload Release APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: chess-automation-release
+        path: ChessChatApp/ChessChatApp/app/build/outputs/apk/release/*.apk
+        retention-days: 90
+
+    - name: Create Build Summary
+      run: |
+        echo "## Build Complete! 🎉" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### APK Files Generated:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Debug APK**: Available in artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "- **Release APK**: Available in artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### File Sizes:" >> $GITHUB_STEP_SUMMARY
+        ls -lh ChessChatApp/ChessChatApp/app/build/outputs/apk/debug/*.apk | awk '{print "- Debug: " $5}' >> $GITHUB_STEP_SUMMARY || echo "- Debug: N/A" >> $GITHUB_STEP_SUMMARY
+        ls -lh ChessChatApp/ChessChatApp/app/build/outputs/apk/release/*.apk | awk '{print "- Release: " $5}' >> $GITHUB_STEP_SUMMARY || echo "- Release: N/A" >> $GITHUB_STEP_SUMMARY

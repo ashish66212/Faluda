@@ -209,7 +209,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val service = "${packageName}/${ChessAccessibilityService::class.java.canonicalName}"
+        val componentName = android.content.ComponentName(this, ChessAccessibilityService::class.java)
+        val service = componentName.flattenToString()
         val enabledServices = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES

@@ -820,26 +820,67 @@ class MoveDetectionOverlayService : Service() {
             return
         }
 
-        addLog("executeMoveAutomatically", "Accessibility service OK - dispatching drag gesture")
+        addLog("executeMoveAutomatically", "Accessibility service OK - using CLICK format (tap-tap)")
         
-        // Simulate drag gesture
-        val success = touchSimulator.simulateDrag(
-            fromCoords.first, fromCoords.second,
-            toCoords.first, toCoords.second,
-            300
+        // Simulate CLICK format: tap from square, then tap to square
+        // First tap (select piece)
+        val firstTapSuccess = touchSimulator.simulateTouch(
+            fromCoords.first, fromCoords.second
         )
-
-        if (success) {
-            addLog("executeMoveAutomatically", "SUCCESS - Move executed: $move")
-            updateStatus("✅ Played: $move")
-        } else {
-            addLog("executeMoveAutomatically", "FAILED - Touch simulation returned false")
-            addLog("executeMoveAutomatically", "Possible reasons:")
-            addLog("executeMoveAutomatically", "  1. Accessibility service crashed")
-            addLog("executeMoveAutomatically", "  2. Gesture queue full")
-            addLog("executeMoveAutomatically", "  3. Coordinates out of bounds")
-            updateStatus("⚠️ Execution failed")
+        
+        if (!firstTapSuccess) {
+            addLog("executeMoveAutomatically", "FAILED - First tap failed at $fromSquare")
+            updateStatus("⚠️ First tap failed")
             Toast.makeText(this, "Touch failed - check accessibility", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        addLog("executeMoveAutomatically", "First tap SUCCESS at $fromSquare")
+        
+        // Delay between taps (300ms to allow chess app to register selection)
+        handler.postDelayed({
+            addLog("executeMoveAutomatically", "Executing second tap at $toSquare")
+            
+            // Second tap (move piece to destination)
+            val secondTapSuccess = touchSimulator.simulateTouch(
+                toCoords.first, toCoords.second
+            )
+            
+            if (secondTapSuccess) {
+                addLog("executeMoveAutomatically", "SUCCESS - Move executed: $move (CLICK format)")
+                updateStatus("✅ Played: $move")
+                
+                // Pause detection briefly after executing move to avoid detecting our own move
+                pauseDetectionTemporarily(1500)
+            } else {
+                addLog("executeMoveAutomatically", "FAILED - Second tap failed")
+                addLog("executeMoveAutomatically", "Possible reasons:")
+                addLog("executeMoveAutomatically", "  1. Accessibility service crashed")
+                addLog("executeMoveAutomatically", "  2. Gesture queue full")
+                addLog("executeMoveAutomatically", "  3. Coordinates out of bounds")
+                updateStatus("⚠️ Second tap failed")
+                Toast.makeText(this, "Second tap failed - check accessibility", Toast.LENGTH_LONG).show()
+            }
+        }, 300)
+    }
+    
+    /**
+     * Temporarily pause detection to avoid detecting our own automated move
+     */
+    private fun pauseDetectionTemporarily(delayMs: Long) {
+        if (isDetecting) {
+            addLog("pauseDetectionTemporarily", "Pausing detection for ${delayMs}ms")
+            val wasDetecting = isDetecting
+            isDetecting = false
+            handler.removeCallbacks(detectionRunnable)
+            
+            handler.postDelayed({
+                if (wasDetecting) {
+                    addLog("pauseDetectionTemporarily", "Resuming detection")
+                    isDetecting = true
+                    handler.post(detectionRunnable)
+                }
+            }, delayMs)
         }
     }
 

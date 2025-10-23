@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.text.method.ScrollingMovementMethod
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.*
@@ -24,18 +25,13 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.TimeUnit
 
 /**
- * Improved Move Detection Overlay Service
- * Features:
- * - Compact floating overlay (80x80px, expandable)
- * - Memory-efficient bitmap pooling
- * - App-specific capture profiles
- * - Stockfish integration via Ngrok
- * - Automated move execution
- * - Connection pooling
- * - Adaptive frame rate
+ * Improved Move Detection Overlay Service with COMPREHENSIVE LIVE LOGGING
+ * All operations are logged to both LogCat and on-screen live log
  */
 class MoveDetectionOverlayService : Service() {
 
@@ -57,7 +53,8 @@ class MoveDetectionOverlayService : Service() {
     
     // Status Views
     private var statusTextView: TextView? = null
-    private var moveLogTextView: TextView? = null
+    private var liveLogTextView: TextView? = null
+    private val logBuffer = StringBuilder()
     
     // Screen Capture
     private var mediaProjection: MediaProjection? = null
@@ -110,6 +107,7 @@ class MoveDetectionOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        addLog("onCreate", "Service created")
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -122,9 +120,11 @@ class MoveDetectionOverlayService : Service() {
         
         // Create compact overlay first
         createCompactOverlay()
+        addLog("onCreate", "Overlay created successfully")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        addLog("onStartCommand", "Service starting with intent")
         intent?.let {
             val resultCode = it.getIntExtra("resultCode", 0)
             val data = it.getParcelableExtra<Intent>("data")
@@ -136,9 +136,11 @@ class MoveDetectionOverlayService : Service() {
             boardY = y
             boardSize = size
             
+            addLog("onStartCommand", "Board config: X=$x, Y=$y, Size=$size")
             saveSettings()
             
             if (resultCode != 0 && data != null) {
+                addLog("onStartCommand", "Delay ${currentProfile.captureDelay}ms before capture")
                 // Apply capture delay from app profile
                 handler.postDelayed({
                     startScreenCapture(resultCode, data)
@@ -155,6 +157,8 @@ class MoveDetectionOverlayService : Service() {
         boardY = prefs.getInt("board_y", 300)
         boardSize = prefs.getInt("board_size", 800)
         isFlipped = prefs.getBoolean("board_flipped", false)
+        addLog("loadSettings", "Server: $ngrokUrl")
+        addLog("loadSettings", "Board: X=$boardX Y=$boardY Size=$boardSize Flipped=$isFlipped")
     }
 
     private fun saveSettings() {
@@ -165,6 +169,7 @@ class MoveDetectionOverlayService : Service() {
             .putInt("board_size", boardSize)
             .putBoolean("board_flipped", isFlipped)
             .apply()
+        addLog("saveSettings", "Settings saved")
     }
 
     private fun detectCurrentApp() {
@@ -176,19 +181,20 @@ class MoveDetectionOverlayService : Service() {
                 val packageName = topActivity?.packageName ?: ""
                 currentProfile = ChessAppProfiles.getProfile(packageName)
                 detectionInterval = currentProfile.frameRateLimit
-                Log.d(TAG, "Detected app: ${currentProfile.appName}, profile applied")
+                addLog("detectCurrentApp", "App: ${currentProfile.appName}")
+                addLog("detectCurrentApp", "Interval: ${detectionInterval}ms")
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Could not detect current app: ${e.message}")
+            addLog("detectCurrentApp", "ERROR: ${e.message}")
         }
     }
 
-        private fun minimizeOverlay() {
+    private fun minimizeOverlay() {
         compactOverlay?.let { windowManager?.removeView(it) }
         compactOverlay = null
         isExpanded = false
         createMinimizedButton()
-        Log.i(TAG, "Overlay minimized")
+        addLog("minimizeOverlay", "Overlay minimized to icon")
     }
     
     private fun createMinimizedButton() {
@@ -242,14 +248,17 @@ class MoveDetectionOverlayService : Service() {
     }
     
     private fun sendStartCommand() {
+        addLog("sendStartCommand", "CALLED - Initiating game start")
+        
         if (ngrokUrl.isEmpty()) {
             updateStatus("⚠️ No server URL")
-            Log.e(TAG, "Start command failed: Server URL not configured")
-            Toast.makeText(this, "Please configure server URL in main app", Toast.LENGTH_SHORT).show()
+            addLog("sendStartCommand", "FAILED - Server URL not configured!")
+            Toast.makeText(this, "Configure server URL in main app first", Toast.LENGTH_LONG).show()
             return
         }
 
-        Log.i(TAG, "Sending start command to $ngrokUrl/start")
+        addLog("sendStartCommand", "URL: $ngrokUrl/start")
+        addLog("sendStartCommand", "Sending POST request...")
         updateStatus("🚀 Starting game...")
 
         Thread {
@@ -259,35 +268,38 @@ class MoveDetectionOverlayService : Service() {
                     .post("".toRequestBody(null))
                     .build()
 
+                addLog("HTTP", "POST $ngrokUrl/start")
+                
                 client.newCall(request).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
-                        Log.e(TAG, "Start command failed: ${e.message}", e)
+                        addLog("sendStartCommand", "FAILED - ${e.message}")
                         handler.post {
-                            updateStatus("⚠️ Start failed")
-                            Toast.makeText(this@MoveDetectionOverlayService, "Connection error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            updateStatus("⚠️ Connection failed")
+                            Toast.makeText(this@MoveDetectionOverlayService, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
                     }
 
                     override fun onResponse(call: Call, response: Response) {
-                        val responseBody = response.body?.string()
+                        val responseBody = response.body?.string() ?: "No response"
+                        addLog("HTTP", "Response ${response.code}: $responseBody")
+                        
                         if (response.isSuccessful) {
-                            Log.i(TAG, "Start command successful: $responseBody")
+                            addLog("sendStartCommand", "SUCCESS - Game started")
                             handler.post {
                                 gameStarted = true
                                 updateStatus("✅ Game started!")
                                 Toast.makeText(this@MoveDetectionOverlayService, "Game started!", Toast.LENGTH_SHORT).show()
                             }
                         } else {
-                            Log.e(TAG, "Start command failed with code ${response.code}: $responseBody")
+                            addLog("sendStartCommand", "FAILED - Server error ${response.code}")
                             handler.post {
                                 updateStatus("⚠️ Server error")
-                                Toast.makeText(this@MoveDetectionOverlayService, "Server error: ${response.code}", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
                 })
             } catch (e: Exception) {
-                Log.e(TAG, "Start command exception: ${e.message}", e)
+                addLog("sendStartCommand", "EXCEPTION - ${e.message}")
                 handler.post {
                     updateStatus("⚠️ Error")
                 }
@@ -296,21 +308,24 @@ class MoveDetectionOverlayService : Service() {
     }
     
     private fun sendColorCommand(color: String) {
+        addLog("sendColorCommand", "CALLED - Setting color to $color")
+        
         if (ngrokUrl.isEmpty()) {
             updateStatus("⚠️ No server URL")
-            Log.e(TAG, "Color command failed: Server URL not configured")
-            Toast.makeText(this, "Please configure server URL in main app", Toast.LENGTH_SHORT).show()
+            addLog("sendColorCommand", "FAILED - No server URL")
+            Toast.makeText(this, "Configure server URL first", Toast.LENGTH_SHORT).show()
             return
         }
 
         if (!gameStarted) {
             updateStatus("⚠️ Start game first")
-            Log.w(TAG, "Color command blocked: Game not started")
+            addLog("sendColorCommand", "FAILED - Game not started")
             Toast.makeText(this, "Press Start button first", Toast.LENGTH_SHORT).show()
             return
         }
 
-        Log.i(TAG, "Sending color command: $color to $ngrokUrl/move")
+        addLog("sendColorCommand", "URL: $ngrokUrl/move")
+        addLog("sendColorCommand", "Data: $color")
         updateStatus("🎨 Setting color: $color")
 
         Thread {
@@ -321,35 +336,45 @@ class MoveDetectionOverlayService : Service() {
                     .post(requestBody)
                     .build()
 
+                addLog("HTTP", "POST $ngrokUrl/move body=$color")
+                
                 client.newCall(request).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
-                        Log.e(TAG, "Color command ($color) failed: ${e.message}", e)
+                        addLog("sendColorCommand", "FAILED - ${e.message}")
                         handler.post {
-                            updateStatus("⚠️ Color failed")
-                            Toast.makeText(this@MoveDetectionOverlayService, "Connection error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            updateStatus("⚠️ Connection failed")
                         }
                     }
 
                     override fun onResponse(call: Call, response: Response) {
-                        val responseBody = response.body?.string()
+                        val responseBody = response.body?.string() ?: "No response"
+                        addLog("HTTP", "Response ${response.code}: $responseBody")
+                        
                         if (response.isSuccessful) {
-                            Log.i(TAG, "Color command ($color) successful: $responseBody")
+                            addLog("sendColorCommand", "SUCCESS - Playing as $color")
+                            addLog("sendColorCommand", "Engine response: $responseBody")
                             handler.post {
                                 playerColor = color
                                 updateStatus("✅ Playing as $color")
-                                Toast.makeText(this@MoveDetectionOverlayService, "Playing as $color", Toast.LENGTH_SHORT).show()
+                                
+                                // If engine made first move (when user chose black), execute it
+                                if (color == "black" && isAutoPlayEnabled && responseBody.isNotEmpty()) {
+                                    addLog("sendColorCommand", "Engine moved first: $responseBody")
+                                    if (responseBody.matches("[a-h][1-8][a-h][1-8]".toRegex())) {
+                                        executeMoveAutomatically(responseBody)
+                                    }
+                                }
                             }
                         } else {
-                            Log.e(TAG, "Color command ($color) failed with code ${response.code}: $responseBody")
+                            addLog("sendColorCommand", "FAILED - Server error ${response.code}")
                             handler.post {
                                 updateStatus("⚠️ Server error")
-                                Toast.makeText(this@MoveDetectionOverlayService, "Server error: ${response.code}", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
                 })
             } catch (e: Exception) {
-                Log.e(TAG, "Color command ($color) exception: ${e.message}", e)
+                addLog("sendColorCommand", "EXCEPTION - ${e.message}")
                 handler.post {
                     updateStatus("⚠️ Error")
                 }
@@ -357,10 +382,9 @@ class MoveDetectionOverlayService : Service() {
         }.start()
     }
 
-    /**
-     * Create expanded control panel with all buttons
-     */
     private fun createCompactOverlay() {
+        addLog("createCompactOverlay", "Building overlay UI")
+        
         val layoutParams = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -398,40 +422,51 @@ class MoveDetectionOverlayService : Service() {
         val minimizeButton = overlayView.findViewById<Button>(R.id.minimizeButton)
         val autoPlayCheckbox = overlayView.findViewById<CheckBox>(R.id.autoPlayCheckbox)
         statusTextView = overlayView.findViewById(R.id.statusTextView)
+        liveLogTextView = overlayView.findViewById(R.id.liveLogTextView)
+        
+        // Make log scrollable
+        liveLogTextView?.movementMethod = ScrollingMovementMethod()
         
         // Set up button handlers
         startButton.setOnClickListener {
+            addLog("UI", "Start button clicked")
             sendStartCommand()
         }
         
         blackButton.setOnClickListener {
+            addLog("UI", "Black button clicked")
             sendColorCommand("black")
         }
         
         whiteButton.setOnClickListener {
+            addLog("UI", "White button clicked")
             sendColorCommand("white")
         }
         
         detectButton.setOnClickListener {
+            addLog("UI", "Detect button clicked")
             startDetection()
         }
         
         stopButton.setOnClickListener {
+            addLog("UI", "Stop button clicked")
             stopDetection()
         }
         
         flipButton.setOnClickListener {
+            addLog("UI", "Flip button clicked")
             flipBoard()
         }
         
         minimizeButton.setOnClickListener {
+            addLog("UI", "Minimize button clicked")
             minimizeOverlay()
         }
         
         autoPlayCheckbox.setOnCheckedChangeListener { _, isChecked ->
             isAutoPlayEnabled = isChecked
             updateStatus(if (isChecked) "🤖 Auto-Play ON" else "👀 Watching")
-            Log.i(TAG, "Auto-play ${if (isChecked) "enabled" else "disabled"}")
+            addLog("UI", "Auto-play ${if (isChecked) "ENABLED" else "DISABLED"}")
         }
         
         // Make draggable
@@ -441,137 +476,7 @@ class MoveDetectionOverlayService : Service() {
         isExpanded = true
         windowManager?.addView(compactOverlay, layoutParams)
         
-        Log.i(TAG, "Overlay created with all controls")
-    }
-
-    /**
-     * Create expanded control panel
-     */
-    private fun createExpandedOverlay() {
-        val layoutParams = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT
-            )
-        } else {
-            WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_PHONE,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-                PixelFormat.TRANSLUCENT
-            )
-        }
-
-        layoutParams.gravity = Gravity.TOP or Gravity.END
-        layoutParams.x = dp(20)
-        layoutParams.y = dp(200)
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#E0263238"))
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            elevation = dp(10).toFloat()
-        }
-
-        // Status Display
-        statusTextView = TextView(this).apply {
-            text = "⚪ Ready"
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-        }
-        container.addView(statusTextView)
-
-        // Control Buttons Row
-        val buttonsRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-
-        val startBtn = createCompactButton("▶", "Start") {
-            startDetection()
-        }
-        val stopBtn = createCompactButton("⏹", "Stop") {
-            stopDetection()
-        }
-        val refreshBtn = createCompactButton("🔄", "Flip") {
-            flipBoard()
-        }
-
-        buttonsRow.addView(startBtn)
-        buttonsRow.addView(stopBtn)
-        buttonsRow.addView(refreshBtn)
-        container.addView(buttonsRow)
-
-        // Auto-Play Toggle
-        val autoPlayLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        
-        val autoPlayCheckbox = CheckBox(this).apply {
-            isChecked = isAutoPlayEnabled
-            setTextColor(Color.WHITE)
-            setOnCheckedChangeListener { _, isChecked ->
-                isAutoPlayEnabled = isChecked
-                updateStatus(if (isChecked) "🤖 Auto-Play ON" else "👀 Watching")
-            }
-        }
-        
-        val autoPlayLabel = TextView(this).apply {
-            text = "Auto-Play"
-            textSize = 12f
-            setTextColor(Color.WHITE)
-            setPadding(dp(4), 0, 0, 0)
-        }
-        
-        autoPlayLayout.addView(autoPlayCheckbox)
-        autoPlayLayout.addView(autoPlayLabel)
-        container.addView(autoPlayLayout)
-
-        // Close Button
-        val closeBtn = createCompactButton("✖", "Close") {
-            toggleExpanded()
-        }
-        container.addView(closeBtn)
-
-        expandedOverlay = container
-        windowManager?.addView(expandedOverlay, layoutParams)
-    }
-
-    private fun createCompactButton(icon: String, contentDesc: String, onClick: () -> Unit): Button {
-        return Button(this).apply {
-            text = icon
-            textSize = 18f
-            contentDescription = contentDesc
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-            setOnClickListener { onClick() }
-            layoutParams = LinearLayout.LayoutParams(
-                dp(60),
-                dp(50)
-            ).apply {
-                setMargins(dp(2), dp(2), dp(2), dp(2))
-            }
-        }
-    }
-
-    private fun toggleExpanded() {
-        if (isExpanded) {
-            // Collapse
-            expandedOverlay?.let { windowManager?.removeView(it) }
-            expandedOverlay = null
-            isExpanded = false
-        } else {
-            // Expand
-            createExpandedOverlay()
-            isExpanded = true
-        }
+        addLog("createCompactOverlay", "Overlay displayed successfully")
     }
 
     private fun makeDraggable(view: View, layoutParams: WindowManager.LayoutParams) {
@@ -601,11 +506,15 @@ class MoveDetectionOverlayService : Service() {
     }
 
     private fun startScreenCapture(resultCode: Int, data: Intent) {
+        addLog("startScreenCapture", "CALLED - Initializing screen capture")
+        
         val metrics = DisplayMetrics()
         windowManager?.defaultDisplay?.getMetrics(metrics)
         val width = metrics.widthPixels
         val height = metrics.heightPixels
 
+        addLog("startScreenCapture", "Screen: ${width}x${height}")
+        
         imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
 
         val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -627,27 +536,31 @@ class MoveDetectionOverlayService : Service() {
         )
 
         updateStatus("📸 Capture Ready")
-        Log.d(TAG, "Screen capture initialized with anti-detection flags")
+        addLog("startScreenCapture", "SUCCESS - Virtual display created")
     }
 
     private fun startDetection() {
+        addLog("startDetection", "CALLED - Starting move detection")
         isDetecting = true
         updateStatus("🔍 Detecting...")
         handler.post(detectionRunnable)
-        Log.d(TAG, "Detection started with interval: ${detectionInterval}ms")
+        addLog("startDetection", "Detection loop started (interval: ${detectionInterval}ms)")
     }
 
     private fun stopDetection() {
+        addLog("stopDetection", "CALLED - Stopping detection")
         isDetecting = false
         handler.removeCallbacks(detectionRunnable)
         updateStatus("⚪ Stopped")
-        Log.d(TAG, "Detection stopped")
+        addLog("stopDetection", "Detection stopped")
     }
 
     private fun flipBoard() {
         isFlipped = !isFlipped
         saveSettings()
+        val orientation = if (isFlipped) "Black bottom" else "White bottom"
         updateStatus(if (isFlipped) "⬛ Black Bottom" else "⬜ White Bottom")
+        addLog("flipBoard", "Board flipped - $orientation")
     }
 
     private fun captureScreen() {
@@ -655,7 +568,6 @@ class MoveDetectionOverlayService : Service() {
         try {
             val image = imageReader?.acquireLatestImage()
             if (image == null) {
-                Log.w(TAG, "No image available")
                 return
             }
 
@@ -687,7 +599,7 @@ class MoveDetectionOverlayService : Service() {
             
             previousBitmap = boardBitmap
         } catch (e: Exception) {
-            Log.e(TAG, "Capture error: ${e.message}")
+            addLog("captureScreen", "ERROR - ${e.message}")
             bitmapPool.recycle(fullBitmap)
         }
     }
@@ -697,7 +609,7 @@ class MoveDetectionOverlayService : Service() {
             val extracted = Bitmap.createBitmap(fullBitmap, boardX, boardY, boardSize, boardSize)
             extracted
         } catch (e: Exception) {
-            Log.e(TAG, "Error extracting board: ${e.message}")
+            addLog("extractBoardArea", "ERROR - ${e.message}")
             fullBitmap
         }
     }
@@ -706,8 +618,7 @@ class MoveDetectionOverlayService : Service() {
         val squareSize = oldBoard.width / 8
         val changes = mutableListOf<Pair<Int, Int>>()
 
-        Log.d(TAG, "=== Move Detection Started ===")
-        Log.d(TAG, "Board dimensions: ${oldBoard.width}x${oldBoard.height}, square size: $squareSize")
+        addLog("detectMove", "Scanning board for changes...")
 
         for (row in 0 until 8) {
             for (col in 0 until 8) {
@@ -716,34 +627,31 @@ class MoveDetectionOverlayService : Service() {
                 
                 if (hasSquareChanged(oldBoard, newBoard, x, y, squareSize)) {
                     changes.add(Pair(row, col))
-                    Log.d(TAG, "Square changed at row=$row, col=$col (${squareToUCI(row, col)})")
                 }
             }
         }
 
-        Log.i(TAG, "Total squares changed: ${changes.size}")
+        addLog("detectMove", "Changed squares: ${changes.size}")
 
         // Standard move: exactly 2 squares changed
         if (changes.size == 2) {
             val from = changes[0]
             val to = changes[1]
             val move = squareToUCI(from.first, from.second) + squareToUCI(to.first, to.second)
-            Log.i(TAG, "✅ Move detected successfully: $move")
-            Log.d(TAG, "  From: ${squareToUCI(from.first, from.second)} (row=${from.first}, col=${from.second})")
-            Log.d(TAG, "  To: ${squareToUCI(to.first, to.second)} (row=${to.first}, col=${to.second})")
+            addLog("detectMove", "MOVE DETECTED: $move")
+            addLog("detectMove", "  From: ${squareToUCI(from.first, from.second)}")
+            addLog("detectMove", "  To: ${squareToUCI(to.first, to.second)}")
             return move
-        } else {
-            Log.w(TAG, "❌ Move detection failed: Expected 2 changed squares, found ${changes.size}")
-            if (changes.isNotEmpty()) {
-                Log.d(TAG, "Changed squares: ${changes.map { squareToUCI(it.first, it.second) }}")
-            }
-            return null
+        } else if (changes.size > 0) {
+            addLog("detectMove", "Invalid (${changes.size} squares) - ${changes.map { squareToUCI(it.first, it.second) }}")
         }
+        
+        return null
     }
 
     private fun hasSquareChanged(old: Bitmap, new: Bitmap, x: Int, y: Int, size: Int): Boolean {
         var diffPixels = 0
-        val sampleRate = 4  // Sample every 4th pixel for performance
+        val sampleRate = 4
         val threshold = 0.12
 
         for (dy in 0 until size step sampleRate) {
@@ -787,51 +695,57 @@ class MoveDetectionOverlayService : Service() {
     }
 
     private fun onMoveDetected(move: String) {
-        Log.i(TAG, "📍 Move detected: $move")
+        addLog("onMoveDetected", "USER MOVE: $move")
         updateStatus("♟ Move: $move")
         
-        // Send to Stockfish engine
+        // Send to Stockfish engine via Flask API
         if (ngrokUrl.isNotEmpty()) {
-            Log.d(TAG, "Sending move to engine at $ngrokUrl")
+            addLog("onMoveDetected", "Sending to engine...")
             sendMoveToEngine(move)
         } else {
-            Log.w(TAG, "Skipping engine request: Server URL not configured")
+            addLog("onMoveDetected", "SKIPPED - No server URL")
         }
     }
 
     private fun sendMoveToEngine(move: String) {
+        addLog("sendMoveToEngine", "CALLED - Move: $move")
+        
         if (ngrokUrl.isEmpty()) {
-            Log.w(TAG, "Ngrok URL not configured")
+            addLog("sendMoveToEngine", "FAILED - No ngrok URL")
             return
         }
 
         Thread {
             try {
-                val json = """{"move": "$move"}"""
-                val body = json.toRequestBody("application/json".toMediaType())
+                // Send as plain text body (matching Flask API)
+                val requestBody = move.toRequestBody(null)
                 
                 val request = Request.Builder()
-                    .url("$ngrokUrl/position")
-                    .post(body)
+                    .url("$ngrokUrl/move")
+                    .post(requestBody)
                     .build()
 
+                addLog("HTTP", "POST $ngrokUrl/move body=$move")
+                
                 client.newCall(request).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
-                        Log.e(TAG, "Engine request failed: ${e.message}")
+                        addLog("sendMoveToEngine", "FAILED - ${e.message}")
                         handler.post {
                             updateStatus("⚠️ Connection failed")
                         }
                     }
 
                     override fun onResponse(call: Call, response: Response) {
-                        val responseBody = response.body?.string()
-                        if (response.isSuccessful && responseBody != null) {
-                            Log.d(TAG, "Engine response: $responseBody")
+                        val responseBody = response.body?.string() ?: ""
+                        addLog("HTTP", "Response ${response.code}: $responseBody")
+                        
+                        if (response.isSuccessful && responseBody.isNotEmpty()) {
+                            addLog("sendMoveToEngine", "Engine response: $responseBody")
                             handler.post {
                                 processEngineResponse(responseBody)
                             }
                         } else {
-                            Log.w(TAG, "Engine error: ${response.code}")
+                            addLog("sendMoveToEngine", "FAILED - Server error ${response.code}")
                             handler.post {
                                 updateStatus("⚠️ Engine error")
                             }
@@ -839,39 +753,44 @@ class MoveDetectionOverlayService : Service() {
                     }
                 })
             } catch (e: Exception) {
-                Log.e(TAG, "Error sending to engine: ${e.message}")
+                addLog("sendMoveToEngine", "EXCEPTION - ${e.message}")
             }
         }.start()
     }
 
     private fun processEngineResponse(response: String) {
+        addLog("processEngineResponse", "CALLED - Response: $response")
+        
         try {
-            // Parse engine response (expecting JSON with "best_move" field)
-            val bestMove = extractBestMove(response)
-            if (bestMove != null && isAutoPlayEnabled) {
-                executeMoveAutomatically(bestMove)
-            } else if (bestMove != null) {
-                updateStatus("💡 Best: $bestMove")
+            // Flask API returns plain text like "e2e4" or "Checkmate, I win!"
+            // Extract move if present (format: a-h, 1-8, a-h, 1-8, optional promotion)
+            val movePattern = "[a-h][1-8][a-h][1-8][qrbn]?".toRegex()
+            val bestMove = movePattern.find(response)?.value
+            
+            if (bestMove != null) {
+                addLog("processEngineResponse", "Best move extracted: $bestMove")
+                
+                if (isAutoPlayEnabled) {
+                    addLog("processEngineResponse", "Auto-play enabled - executing move")
+                    executeMoveAutomatically(bestMove)
+                } else {
+                    updateStatus("💡 Best: $bestMove")
+                    addLog("processEngineResponse", "Suggestion: $bestMove (auto-play OFF)")
+                }
+            } else {
+                addLog("processEngineResponse", "No move found in response")
+                updateStatus("ℹ️ $response")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error processing response: ${e.message}")
-        }
-    }
-
-    private fun extractBestMove(json: String): String? {
-        return try {
-            // Simple JSON parsing (in production, use proper JSON library)
-            val pattern = """"best_move"\s*:\s*"([a-h][1-8][a-h][1-8][qrbn]?)"""".toRegex()
-            pattern.find(json)?.groupValues?.get(1)
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not extract best move from: $json")
-            null
+            addLog("processEngineResponse", "ERROR - ${e.message}")
         }
     }
 
     private fun executeMoveAutomatically(move: String) {
+        addLog("executeMoveAutomatically", "CALLED - Move: $move")
+        
         if (move.length < 4) {
-            Log.e(TAG, "❌ Move execution failed: Invalid move format '$move' (length=${move.length})")
+            addLog("executeMoveAutomatically", "FAILED - Invalid format (length=${move.length})")
             updateStatus("⚠️ Invalid move")
             return
         }
@@ -879,19 +798,28 @@ class MoveDetectionOverlayService : Service() {
         val fromSquare = move.substring(0, 2)
         val toSquare = move.substring(2, 4)
 
-        Log.i(TAG, "=== Move Execution Started ===")
-        Log.i(TAG, "Move: $move (from=$fromSquare, to=$toSquare)")
-        Log.d(TAG, "Board config: X=$boardX, Y=$boardY, Size=$boardSize, Flipped=$isFlipped")
+        addLog("executeMoveAutomatically", "From: $fromSquare, To: $toSquare")
+        addLog("executeMoveAutomatically", "Board: X=$boardX Y=$boardY Size=$boardSize Flipped=$isFlipped")
 
         val fromCoords = touchSimulator.getSquareCoordinates(fromSquare, boardX, boardY, boardSize, isFlipped)
         val toCoords = touchSimulator.getSquareCoordinates(toSquare, boardX, boardY, boardSize, isFlipped)
 
-        Log.d(TAG, "Touch coordinates:")
-        Log.d(TAG, "  From $fromSquare: (${fromCoords.first}, ${fromCoords.second})")
-        Log.d(TAG, "  To $toSquare: (${toCoords.first}, ${toCoords.second})")
+        addLog("executeMoveAutomatically", "From coords: (${fromCoords.first}, ${fromCoords.second})")
+        addLog("executeMoveAutomatically", "To coords: (${toCoords.first}, ${toCoords.second})")
 
         updateStatus("🤖 Playing: $move")
 
+        // Check if accessibility service is enabled
+        if (!touchSimulator.isAccessibilityServiceEnabled()) {
+            addLog("executeMoveAutomatically", "FAILED - Accessibility service NOT enabled!")
+            addLog("executeMoveAutomatically", "Go to Settings > Accessibility > Chess Automation")
+            updateStatus("⚠️ Enable accessibility")
+            Toast.makeText(this, "Enable accessibility service first!", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        addLog("executeMoveAutomatically", "Accessibility service OK - dispatching drag gesture")
+        
         // Simulate drag gesture
         val success = touchSimulator.simulateDrag(
             fromCoords.first, fromCoords.second,
@@ -900,23 +828,52 @@ class MoveDetectionOverlayService : Service() {
         )
 
         if (success) {
-            Log.i(TAG, "✅ Move executed successfully: $move")
+            addLog("executeMoveAutomatically", "SUCCESS - Move executed: $move")
             updateStatus("✅ Played: $move")
         } else {
-            Log.e(TAG, "❌ Move execution failed: Touch simulation returned false")
-            Log.e(TAG, "Possible causes:")
-            Log.e(TAG, "  1. Accessibility service not enabled")
-            Log.e(TAG, "  2. Accessibility permissions not granted")
-            Log.e(TAG, "  3. Touch coordinates out of bounds")
+            addLog("executeMoveAutomatically", "FAILED - Touch simulation returned false")
+            addLog("executeMoveAutomatically", "Possible reasons:")
+            addLog("executeMoveAutomatically", "  1. Accessibility service crashed")
+            addLog("executeMoveAutomatically", "  2. Gesture queue full")
+            addLog("executeMoveAutomatically", "  3. Coordinates out of bounds")
             updateStatus("⚠️ Execution failed")
-            Toast.makeText(this, "Auto-play failed - check accessibility service", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Touch failed - check accessibility", Toast.LENGTH_LONG).show()
         }
     }
 
     private fun updateStatus(message: String) {
         handler.post {
             statusTextView?.text = message
-            Log.d(TAG, "Status: $message")
+        }
+    }
+    
+    private fun addLog(function: String, message: String) {
+        val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
+        val logLine = "[$timestamp] $function: $message\n"
+        
+        // Log to LogCat
+        Log.d(TAG, "$function: $message")
+        
+        // Add to buffer
+        logBuffer.append(logLine)
+        
+        // Keep only last 100 lines
+        val lines = logBuffer.lines()
+        if (lines.size > 100) {
+            logBuffer.clear()
+            logBuffer.append(lines.takeLast(100).joinToString("\n"))
+        }
+        
+        // Update UI
+        handler.post {
+            liveLogTextView?.text = logBuffer.toString()
+            // Auto-scroll to bottom
+            liveLogTextView?.let { textView ->
+                val scrollAmount = textView.layout?.getLineTop(textView.lineCount) ?: 0
+                if (scrollAmount > textView.height) {
+                    textView.scrollTo(0, scrollAmount - textView.height)
+                }
+            }
         }
     }
 
@@ -950,6 +907,7 @@ class MoveDetectionOverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        addLog("onDestroy", "Service shutting down")
         stopDetection()
         compactOverlay?.let { windowManager?.removeView(it) }
         expandedOverlay?.let { windowManager?.removeView(it) }
@@ -960,6 +918,6 @@ class MoveDetectionOverlayService : Service() {
         bitmapPool.recycle(previousBitmap)
         client.dispatcher.executorService.shutdown()
         client.connectionPool.evictAll()
-        Log.d(TAG, "Service destroyed, resources cleaned up")
+        addLog("onDestroy", "Cleanup complete")
     }
 }

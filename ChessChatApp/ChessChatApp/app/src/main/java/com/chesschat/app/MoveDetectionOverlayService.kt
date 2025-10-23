@@ -1,6 +1,7 @@
 package com.chesschat.app
 
 import android.app.*
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -847,7 +848,10 @@ class MoveDetectionOverlayService : Service() {
      * This is more reliable than checking the instance variable
      */
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val service = "${packageName}/${ChessAccessibilityService::class.java.canonicalName}"
+        // Use ComponentName to get the properly formatted service name
+        val componentName = ComponentName(this, ChessAccessibilityService::class.java)
+        val service = componentName.flattenToString()
+        
         val enabledServices = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES

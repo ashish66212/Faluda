@@ -1,4 +1,4 @@
-name: Android Build (Option B)
+name: Build APK
 
 on:
   push:
@@ -8,45 +8,35 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-
+    runs-on: ubuntu-latest
     steps:
-    # 1️⃣ Checkout source code
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # 2️⃣ Setup Java
-    - name: Setup Java 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: 17
-        distribution: temurin
-        cache: gradle
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
 
-    # 3️⃣ Install system Gradle
-    - name: Install Gradle
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y gradle
-        gradle -v
+      - name: Cache Gradle
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper/
+          key: gradle-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-cache-${{ runner.os }}-
 
-    # 4️⃣ Cache Gradle dependencies
-    - name: Cache Gradle
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: gradle-cache-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: gradle-cache-
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x ./gradlew
 
-    # 5️⃣ Build APK
-    - name: Build Debug APK
-      run: gradle assembleDebug
+      - name: Build APK (module-specific)
+        run: ./gradlew :app:assembleDebug --no-daemon
 
-    # 6️⃣ Upload APK
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-debug.apk
-        path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk

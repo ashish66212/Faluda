@@ -26,6 +26,7 @@ import androidx.core.app.NotificationCompat
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.opencv.core.Mat
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
@@ -67,9 +68,9 @@ class MoveDetectionOverlayService : Service() {
     private val bitmapPool = BitmapPool(maxPoolSize = 3)
     private var previousBitmap: Bitmap? = null
     
-    // OpenCV-based board detection
+    // OpenCV-based board detection with frame differencing
     private val boardDetector = ChessBoardDetector()
-    private var previousBoardState: Array<IntArray>? = null
+    private var previousMat: Mat? = null
     
     // Detection State
     private val handler = Handler(Looper.getMainLooper())
@@ -573,9 +574,10 @@ class MoveDetectionOverlayService : Service() {
     private fun resumeDetectionImmediately() {
         addLog("resumeDetectionImmediately", "=== INSTANT DETECTION START (0ms) ===")
         
-        // Clear previous board state to start fresh
-        previousBoardState = null
-        addLog("resumeDetectionImmediately", "Cleared previous board state")
+        // Clear previous frame to start fresh
+        previousMat?.release()
+        previousMat = null
+        addLog("resumeDetectionImmediately", "Cleared previous frame")
         
         // Start detection loop immediately - no delay
         isDetecting = true
@@ -648,7 +650,7 @@ class MoveDetectionOverlayService : Service() {
     private fun captureScreen() {
         var fullBitmap: Bitmap? = null
         try {
-            addLog("captureScreen", "CALLED - Capturing screen with OpenCV detection")
+            addLog("captureScreen", "CALLED - Capturing screen with OpenCV frame differencing")
             
             val image = imageReader?.acquireLatestImage()
             if (image == null) {
@@ -674,27 +676,46 @@ class MoveDetectionOverlayService : Service() {
             val boardBitmap = extractBoardArea(fullBitmap)
             bitmapPool.recycle(fullBitmap)
             
-            // Use OpenCV to detect board state
-            addLog("captureScreen", "Analyzing board with OpenCV...")
-            val currentBoardState = boardDetector.detectBoardState(boardBitmap)
+            // NEW: Convert bitmap to OpenCV Mat for frame differencing
+            addLog("captureScreen", "Converting to OpenCV Mat...")
+            val currentMat = boardDetector.bitmapToMat(boardBitmap)
             
-            if (previousBoardState != null) {
-                addLog("captureScreen", "Comparing board states to detect move")
-                val move = boardDetector.detectMove(previousBoardState!!, currentBoardState, isFlipped)
+            if (previousMat != null) {
+                addLog("captureScreen", "Performing OpenCV frame differencing...")
                 
-                if (move != null) {
-                    addLog("captureScreen", "MOVE DETECTED: $move - Sending to engine")
-                    onMoveDetected(move)
+                // NEW: Detect changed regions using OpenCV
+                val changedRegions = boardDetector.detectMovesWithOpenCV(previousMat, currentMat)
+                
+                if (changedRegions.isNotEmpty()) {
+                    addLog("captureScreen", "OpenCV detected ${changedRegions.size} changed regions")
+                    
+                    // NEW: Map regions to chess move
+                    val move = boardDetector.detectMoveFromRegions(
+                        changedRegions,
+                        boardBitmap.width,
+                        boardBitmap.height,
+                        isFlipped
+                    )
+                    
+                    if (move != null) {
+                        addLog("captureScreen", "MOVE DETECTED: $move - Sending to engine")
+                        onMoveDetected(move)
+                    } else {
+                        addLog("captureScreen", "No valid move detected from regions")
+                    }
                 } else {
-                    addLog("captureScreen", "No valid move detected")
+                    addLog("captureScreen", "No significant changes detected")
                 }
             } else {
-                addLog("captureScreen", "FIRST CAPTURE - Establishing baseline board state")
+                addLog("captureScreen", "FIRST CAPTURE - Establishing baseline frame")
             }
             
-            previousBoardState = currentBoardState
+            // Clean up previous Mat and store current
+            previousMat?.release()
+            previousMat = currentMat
+            
             boardBitmap.recycle()
-            addLog("captureScreen", "Board state saved for next comparison")
+            addLog("captureScreen", "Frame saved for next comparison")
         } catch (e: Exception) {
             addLog("captureScreen", "ERROR - ${e.message}")
             e.printStackTrace()
@@ -1016,6 +1037,8 @@ class MoveDetectionOverlayService : Service() {
         imageReader?.close()
         bitmapPool.clear()
         bitmapPool.recycle(previousBitmap)
+        previousMat?.release()
+        previousMat = null
         client.dispatcher.executorService.shutdown()
         client.connectionPool.evictAll()
         addLog("onDestroy", "Cleanup complete")

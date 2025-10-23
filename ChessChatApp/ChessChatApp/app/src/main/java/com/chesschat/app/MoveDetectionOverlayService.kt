@@ -706,30 +706,27 @@ class MoveDetectionOverlayService : Service() {
             val currentMat = boardDetector.bitmapToMat(boardBitmap)
             
             if (previousMat != null) {
-                addLog("captureScreen", "Performing OpenCV frame differencing...")
+                addLog("captureScreen", "Performing IMPROVED square-by-square detection...")
                 
-                // NEW: Detect changed regions using OpenCV
-                val changedRegions = boardDetector.detectMovesWithOpenCV(previousMat, currentMat)
+                // IMPROVED: Detect moves using square-by-square analysis
+                val detectedMoves = boardDetector.detectMovesSquareBySquare(
+                    previousMat,
+                    currentMat,
+                    boardBitmap.width,
+                    boardBitmap.height,
+                    isFlipped
+                )
                 
-                if (changedRegions.isNotEmpty()) {
-                    addLog("captureScreen", "OpenCV detected ${changedRegions.size} changed regions")
+                if (detectedMoves.isNotEmpty()) {
+                    addLog("captureScreen", "Detected ${detectedMoves.size} move(s): $detectedMoves")
                     
-                    // NEW: Map regions to chess move
-                    val move = boardDetector.detectMoveFromRegions(
-                        changedRegions,
-                        boardBitmap.width,
-                        boardBitmap.height,
-                        isFlipped
-                    )
-                    
-                    if (move != null) {
-                        addLog("captureScreen", "MOVE DETECTED: $move - Sending to engine")
-                        onMoveDetected(move)
-                    } else {
-                        addLog("captureScreen", "No valid move detected from regions")
-                    }
+                    // Process the first detected move
+                    // (In a real game, both white and black moves might be detected)
+                    val move = detectedMoves[0]
+                    addLog("captureScreen", "MOVE DETECTED: $move - Sending to engine")
+                    onMoveDetected(move)
                 } else {
-                    addLog("captureScreen", "No significant changes detected")
+                    addLog("captureScreen", "No moves detected from square analysis")
                 }
             } else {
                 addLog("captureScreen", "FIRST CAPTURE - Establishing baseline frame")

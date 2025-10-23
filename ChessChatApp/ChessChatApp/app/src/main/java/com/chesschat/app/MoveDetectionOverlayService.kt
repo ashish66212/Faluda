@@ -712,7 +712,7 @@ class MoveDetectionOverlayService : Service() {
         val squareSize = oldBoard.width / 8
         val changes = mutableListOf<Pair<Int, Int>>()
 
-        addLog("detectMove", "Scanning board for changes...")
+        addLog("detectMove", "Scanning 8x8 board (square size: ${squareSize}px)...")
 
         for (row in 0 until 8) {
             for (col in 0 until 8) {
@@ -720,24 +720,32 @@ class MoveDetectionOverlayService : Service() {
                 val y = row * squareSize
                 
                 if (hasSquareChanged(oldBoard, newBoard, x, y, squareSize)) {
+                    val uciSquare = squareToUCI(row, col)
+                    addLog("detectMove", "  Change at screen(row=$row,col=$col) = $uciSquare")
                     changes.add(Pair(row, col))
                 }
             }
         }
 
-        addLog("detectMove", "Changed squares: ${changes.size}")
+        addLog("detectMove", "Total changed squares: ${changes.size}")
 
         // Standard move: exactly 2 squares changed
         if (changes.size == 2) {
             val from = changes[0]
             val to = changes[1]
-            val move = squareToUCI(from.first, from.second) + squareToUCI(to.first, to.second)
+            val fromUCI = squareToUCI(from.first, from.second)
+            val toUCI = squareToUCI(to.first, to.second)
+            val move = fromUCI + toUCI
             addLog("detectMove", "MOVE DETECTED: $move")
-            addLog("detectMove", "  From: ${squareToUCI(from.first, from.second)}")
-            addLog("detectMove", "  To: ${squareToUCI(to.first, to.second)}")
+            addLog("detectMove", "  From: $fromUCI (screen row=${from.first}, col=${from.second})")
+            addLog("detectMove", "  To: $toUCI (screen row=${to.first}, col=${to.second})")
             return move
         } else if (changes.size > 0) {
-            addLog("detectMove", "Invalid (${changes.size} squares) - ${changes.map { squareToUCI(it.first, it.second) }}")
+            val changedSquares = changes.map { 
+                val uci = squareToUCI(it.first, it.second)
+                "(${it.first},${it.second})=$uci"
+            }
+            addLog("detectMove", "Invalid (${changes.size} squares changed): $changedSquares")
         }
         
         return null
@@ -779,11 +787,27 @@ class MoveDetectionOverlayService : Service() {
     }
 
     private fun squareToUCI(row: Int, col: Int): String {
-        val actualRow = if (isFlipped) row else 7 - row
-        val actualCol = if (isFlipped) 7 - col else col
+        // Screen coordinates: (0,0) = top-left
+        // Chess board (white at bottom): a1 = bottom-left, h8 = top-right
+        // Chess board (black at bottom/flipped): a1 = top-right, h8 = bottom-left
+        
+        val actualRow: Int
+        val actualCol: Int
+        
+        if (isFlipped) {
+            // Black at bottom: flip both row and column
+            actualRow = row
+            actualCol = 7 - col
+        } else {
+            // White at bottom: flip only row
+            actualRow = 7 - row
+            actualCol = col
+        }
         
         val file = ('a' + actualCol).toString()
         val rank = (actualRow + 1).toString()
+        
+        addLog("squareToUCI", "Screen(row=$row,col=$col) → UCI=$file$rank (flipped=$isFlipped)")
         
         return "$file$rank"
     }

@@ -166,12 +166,13 @@ class MoveDetectionOverlayService : Service() {
     private fun saveSettings() {
         val prefs = getSharedPreferences("ChessChatPrefs", Context.MODE_PRIVATE)
         prefs.edit()
+            .putString("base_url", ngrokUrl)
             .putInt("board_x", boardX)
             .putInt("board_y", boardY)
             .putInt("board_size", boardSize)
             .putBoolean("board_flipped", isFlipped)
             .apply()
-        addLog("saveSettings", "Settings saved")
+        addLog("saveSettings", "Settings saved (API: $ngrokUrl)")
     }
 
     private fun detectCurrentApp() {
@@ -421,6 +422,7 @@ class MoveDetectionOverlayService : Service() {
         val detectButton = overlayView.findViewById<Button>(R.id.detectButton)
         val stopButton = overlayView.findViewById<Button>(R.id.stopButton)
         val flipButton = overlayView.findViewById<Button>(R.id.flipButton)
+        val updateApiButton = overlayView.findViewById<Button>(R.id.updateApiButton)
         val minimizeButton = overlayView.findViewById<Button>(R.id.minimizeButton)
         val autoPlayCheckbox = overlayView.findViewById<CheckBox>(R.id.autoPlayCheckbox)
         statusTextView = overlayView.findViewById(R.id.statusTextView)
@@ -458,6 +460,11 @@ class MoveDetectionOverlayService : Service() {
         flipButton.setOnClickListener {
             addLog("UI", "Flip button clicked")
             flipBoard()
+        }
+        
+        updateApiButton.setOnClickListener {
+            addLog("UI", "Update API button clicked")
+            showUpdateApiDialog()
         }
         
         minimizeButton.setOnClickListener {
@@ -589,6 +596,55 @@ class MoveDetectionOverlayService : Service() {
         val orientation = if (isFlipped) "Black bottom" else "White bottom"
         updateStatus(if (isFlipped) "⬛ Black Bottom" else "⬜ White Bottom")
         addLog("flipBoard", "Board flipped - $orientation")
+    }
+    
+    /**
+     * Show dialog to update API endpoint URL
+     */
+    private fun showUpdateApiDialog() {
+        addLog("showUpdateApiDialog", "Opening dialog to update API endpoint")
+        
+        handler.post {
+            // Create EditText for URL input
+            val input = android.widget.EditText(this)
+            input.setText(ngrokUrl)
+            input.hint = "https://your-ngrok-url.ngrok.io"
+            input.setPadding(dp(16), dp(16), dp(16), dp(16))
+            
+            // Create AlertDialog
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("Update API Endpoint")
+                .setMessage("Enter your ngrok or API server URL:")
+                .setView(input)
+                .setPositiveButton("Update") { _, _ ->
+                    val newUrl = input.text.toString().trim()
+                    if (newUrl.isNotEmpty()) {
+                        ngrokUrl = newUrl
+                        saveSettings()
+                        addLog("showUpdateApiDialog", "API endpoint updated to: $ngrokUrl")
+                        updateStatus("🔗 API Updated")
+                        Toast.makeText(this, "API endpoint updated!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        addLog("showUpdateApiDialog", "Empty URL - no changes made")
+                        Toast.makeText(this, "URL cannot be empty!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton("Cancel") { dialog, _ ->
+                    addLog("showUpdateApiDialog", "Dialog cancelled")
+                    dialog.cancel()
+                }
+                .create()
+            
+            // Set window type for overlay permission
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+            } else {
+                dialog.window?.setType(WindowManager.LayoutParams.TYPE_PHONE)
+            }
+            
+            dialog.show()
+            addLog("showUpdateApiDialog", "Dialog displayed")
+        }
     }
 
     private fun captureScreen() {

@@ -568,8 +568,11 @@ class MoveDetectionOverlayService : Service() {
     private fun captureScreen() {
         var fullBitmap: Bitmap? = null
         try {
+            addLog("captureScreen", "CALLED - Capturing screen for move detection")
+            
             val image = imageReader?.acquireLatestImage()
             if (image == null) {
+                addLog("captureScreen", "SKIPPED - No image available from imageReader")
                 return
             }
 
@@ -592,14 +595,21 @@ class MoveDetectionOverlayService : Service() {
             bitmapPool.recycle(fullBitmap)
             
             if (previousBitmap != null) {
+                addLog("captureScreen", "Comparing with previous bitmap to detect move")
                 val move = detectMove(previousBitmap!!, boardBitmap)
                 if (move != null) {
+                    addLog("captureScreen", "MOVE DETECTED: $move - Sending to engine")
                     onMoveDetected(move)
+                } else {
+                    addLog("captureScreen", "No valid move detected (not exactly 2 squares changed)")
                 }
                 bitmapPool.recycle(previousBitmap)
+            } else {
+                addLog("captureScreen", "FIRST CAPTURE after pause - Saving as baseline (no comparison)")
             }
             
             previousBitmap = boardBitmap
+            addLog("captureScreen", "Saved current board state for next comparison")
         } catch (e: Exception) {
             addLog("captureScreen", "ERROR - ${e.message}")
             bitmapPool.recycle(fullBitmap)
@@ -850,8 +860,9 @@ class MoveDetectionOverlayService : Service() {
                 addLog("executeMoveAutomatically", "SUCCESS - Move executed: $move (CLICK format)")
                 updateStatus("✅ Played: $move")
                 
-                // Pause detection briefly after executing move to avoid detecting our own move
-                pauseDetectionTemporarily(1500)
+                // Pause detection after executing move to give opponent time and avoid self-detection
+                addLog("executeMoveAutomatically", "Pausing detection to wait for opponent move")
+                pauseDetectionTemporarily(2500)
             } else {
                 addLog("executeMoveAutomatically", "FAILED - Second tap failed")
                 addLog("executeMoveAutomatically", "Possible reasons:")
@@ -870,23 +881,29 @@ class MoveDetectionOverlayService : Service() {
      */
     private fun pauseDetectionTemporarily(delayMs: Long) {
         if (isDetecting) {
-            addLog("pauseDetectionTemporarily", "Pausing detection for ${delayMs}ms")
+            addLog("pauseDetectionTemporarily", "=== PAUSING DETECTION ===")
+            addLog("pauseDetectionTemporarily", "Duration: ${delayMs}ms")
             val wasDetecting = isDetecting
             isDetecting = false
             handler.removeCallbacks(detectionRunnable)
             
             // Clear previous bitmap so detection starts fresh after our automated move
-            addLog("pauseDetectionTemporarily", "Clearing previous bitmap for fresh detection")
+            addLog("pauseDetectionTemporarily", "Clearing previousBitmap to reset comparison")
             bitmapPool.recycle(previousBitmap)
             previousBitmap = null
+            addLog("pauseDetectionTemporarily", "Waiting for opponent to make their move...")
             
             handler.postDelayed({
                 if (wasDetecting) {
-                    addLog("pauseDetectionTemporarily", "Resuming detection - ready for opponent move")
+                    addLog("pauseDetectionTemporarily", "=== RESUMING DETECTION ===")
+                    addLog("pauseDetectionTemporarily", "Next capture will establish baseline")
+                    addLog("pauseDetectionTemporarily", "Following capture will detect opponent move")
                     isDetecting = true
                     handler.post(detectionRunnable)
                 }
             }, delayMs)
+        } else {
+            addLog("pauseDetectionTemporarily", "SKIPPED - Detection not active")
         }
     }
 

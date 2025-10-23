@@ -866,6 +866,7 @@ class MoveDetectionOverlayService : Service() {
     
     /**
      * Temporarily pause detection to avoid detecting our own automated move
+     * Clears previous bitmap so detection starts fresh when resumed
      */
     private fun pauseDetectionTemporarily(delayMs: Long) {
         if (isDetecting) {
@@ -874,9 +875,14 @@ class MoveDetectionOverlayService : Service() {
             isDetecting = false
             handler.removeCallbacks(detectionRunnable)
             
+            // Clear previous bitmap so detection starts fresh after our automated move
+            addLog("pauseDetectionTemporarily", "Clearing previous bitmap for fresh detection")
+            bitmapPool.recycle(previousBitmap)
+            previousBitmap = null
+            
             handler.postDelayed({
                 if (wasDetecting) {
-                    addLog("pauseDetectionTemporarily", "Resuming detection")
+                    addLog("pauseDetectionTemporarily", "Resuming detection - ready for opponent move")
                     isDetecting = true
                     handler.post(detectionRunnable)
                 }

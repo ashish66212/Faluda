@@ -15,6 +15,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
 import android.text.method.ScrollingMovementMethod
 import android.util.DisplayMetrics
 import android.util.Log
@@ -809,8 +810,8 @@ class MoveDetectionOverlayService : Service() {
 
         updateStatus("🤖 Playing: $move")
 
-        // Check if accessibility service is enabled
-        if (!touchSimulator.isAccessibilityServiceEnabled()) {
+        // Check if accessibility service is enabled using proper Android API
+        if (!isAccessibilityServiceEnabled()) {
             addLog("executeMoveAutomatically", "FAILED - Accessibility service NOT enabled!")
             addLog("executeMoveAutomatically", "Go to Settings > Accessibility > Chess Automation")
             updateStatus("⚠️ Enable accessibility")
@@ -839,6 +840,25 @@ class MoveDetectionOverlayService : Service() {
             updateStatus("⚠️ Execution failed")
             Toast.makeText(this, "Touch failed - check accessibility", Toast.LENGTH_LONG).show()
         }
+    }
+
+    /**
+     * Properly check if accessibility service is enabled using Android API
+     * This is more reliable than checking the instance variable
+     */
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val service = "${packageName}/${ChessAccessibilityService::class.java.canonicalName}"
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        )
+        val isEnabled = enabledServices?.contains(service) == true
+        
+        addLog("isAccessibilityServiceEnabled", "Checking service: $service")
+        addLog("isAccessibilityServiceEnabled", "Enabled services: $enabledServices")
+        addLog("isAccessibilityServiceEnabled", "Result: $isEnabled")
+        
+        return isEnabled
     }
 
     private fun updateStatus(message: String) {

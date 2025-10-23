@@ -891,11 +891,11 @@ class MoveDetectionOverlayService : Service() {
                 updateStatus("✅ Played: $move")
                 
                 // IMMEDIATELY start detection to catch opponent's response
-                // Wait just 100ms for animation to settle, then capture baseline and start detecting
+                // Wait just 10ms for animation to settle, then capture baseline and start detecting
                 addLog("executeMoveAutomatically", "Starting immediate detection for opponent move")
                 handler.postDelayed({
                     resumeDetectionImmediately()
-                }, 100)
+                }, 10)
             } else {
                 addLog("executeMoveAutomatically", "FAILED - Second tap failed")
                 addLog("executeMoveAutomatically", "Possible reasons:")

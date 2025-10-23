@@ -924,9 +924,10 @@ class MoveDetectionOverlayService : Service() {
             addLog("pauseDetectionTemporarily", "Detection was not active - will start after pause")
         }
         
-        // Clear previous board state so detection starts fresh after our automated move
-        addLog("pauseDetectionTemporarily", "Clearing previousBoardState to reset comparison")
-        previousBoardState = null
+        // Clear previous frame so detection starts fresh after our automated move
+        addLog("pauseDetectionTemporarily", "Clearing previous frame to reset comparison")
+        previousMat?.release()
+        previousMat = null
         addLog("pauseDetectionTemporarily", "Waiting for opponent to make their move...")
         
         // ALWAYS resume detection after delay (even if it wasn't running before)

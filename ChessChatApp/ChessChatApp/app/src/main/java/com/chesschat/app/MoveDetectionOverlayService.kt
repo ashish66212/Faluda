@@ -705,12 +705,14 @@ class MoveDetectionOverlayService : Service() {
             addLog("captureScreen", "Converting to OpenCV Mat...")
             val currentMat = boardDetector.bitmapToMat(boardBitmap)
             
-            if (previousMat != null) {
+            // Store previousMat in local variable to avoid smart cast issues
+            val prevMat = previousMat
+            if (prevMat != null) {
                 addLog("captureScreen", "Performing IMPROVED square-by-square detection...")
                 
                 // IMPROVED: Detect moves using square-by-square analysis
                 val detectedMoves = boardDetector.detectMovesSquareBySquare(
-                    previousMat,
+                    prevMat,
                     currentMat,
                     boardBitmap.width,
                     boardBitmap.height,

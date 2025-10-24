@@ -254,6 +254,305 @@ class MoveDetectionOverlayService : Service() {
         windowManager?.addView(container, layoutParams)
     }
     
+    /**
+     * AUTOMATIC WORKFLOW: Single button does everything
+     * 1. Detects board position and orientation
+     * 2. Shows visual feedback (red border)
+     * 3. Sends game start to API
+     * 4. Detects and sends color to API
+     * 5. Starts move detection automatically
+     */
+    private fun startAutomaticWorkflow() {
+        addLog("startAutomaticWorkflow", "=== STARTING AUTOMATIC WORKFLOW ===")
+        
+        if (ngrokUrl.isEmpty()) {
+            updateStatus("⚠️ No server URL")
+            addLog("startAutomaticWorkflow", "FAILED - Server URL not configured!")
+            Toast.makeText(this, "Configure server URL in main app first", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        if (imageReader == null) {
+            updateStatus("⚠️ No screen capture")
+            addLog("startAutomaticWorkflow", "FAILED - Screen capture not initialized!")
+            Toast.makeText(this, "Please restart detection from main app", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        updateStatus("🔍 Auto-detecting board...")
+        addLog("startAutomaticWorkflow", "Step 1: Capturing screen for board detection")
+        
+        // Capture screen to detect board automatically
+        Thread {
+            try {
+                // Capture and detect board
+                val image = imageReader?.acquireLatestImage()
+                if (image == null) {
+                    addLog("startAutomaticWorkflow", "FAILED - No image available")
+                    handler.post {
+                        updateStatus("⚠️ No image")
+                    }
+                    return@Thread
+                }
+                
+                val planes = image.planes
+                val buffer = planes[0].buffer
+                val pixelStride = planes[0].pixelStride
+                val rowStride = planes[0].rowStride
+                val rowPadding = rowStride - pixelStride * image.width
+                
+                val fullBitmap = bitmapPool.obtain(
+                    image.width + rowPadding / pixelStride,
+                    image.height,
+                    Bitmap.Config.ARGB_8888
+                )
+                fullBitmap.copyPixelsFromBuffer(buffer)
+                image.close()
+                
+                // Detect board automatically
+                addLog("startAutomaticWorkflow", "Step 2: Running automatic board detection...")
+                val detectedConfig = boardDetector.detectBoardAutomatically(fullBitmap)
+                
+                if (detectedConfig != null) {
+                    boardX = detectedConfig.x
+                    boardY = detectedConfig.y
+                    boardSize = detectedConfig.size
+                    isFlipped = !detectedConfig.isWhiteBottom
+                    boardAutoDetected = true
+                    
+                    val detectedColor = if (detectedConfig.isWhiteBottom) "white" else "black"
+                    playerColor = detectedColor
+                    
+                    saveSettings()
+                    
+                    addLog("startAutomaticWorkflow", "✓ Board detected!")
+                    addLog("startAutomaticWorkflow", "  Position: X=$boardX, Y=$boardY, Size=$boardSize")
+                    addLog("startAutomaticWorkflow", "  Detected color: $detectedColor (${if (detectedConfig.isWhiteBottom) "White bottom" else "Black bottom"})")
+                    
+                    handler.post {
+                        // Step 3: Show visual red border feedback
+                        showBoardDetectionBorder()
+                        
+                        // Step 4: Start game via API (after 1 second)
+                        handler.postDelayed({
+                            addLog("startAutomaticWorkflow", "Step 3: Starting game via API...")
+                            sendStartCommandAutomatic { success ->
+                                if (success) {
+                                    // Step 5: Send detected color to API
+                                    handler.postDelayed({
+                                        addLog("startAutomaticWorkflow", "Step 4: Sending color '$detectedColor' to API...")
+                                        sendColorCommandAutomatic(detectedColor) { colorSuccess ->
+                                            if (colorSuccess) {
+                                                // Step 6: Start move detection
+                                                handler.postDelayed({
+                                                    addLog("startAutomaticWorkflow", "Step 5: Starting move detection...")
+                                                    updateStatus("✅ Auto-playing as $detectedColor")
+                                                    startDetection()
+                                                    addLog("startAutomaticWorkflow", "=== AUTOMATIC WORKFLOW COMPLETE ===")
+                                                }, 500)
+                                            } else {
+                                                updateStatus("⚠️ Color setup failed")
+                                            }
+                                        }
+                                    }, 500)
+                                } else {
+                                    updateStatus("⚠️ Game start failed")
+                                }
+                            }
+                        }, 1000)
+                    }
+                } else {
+                    addLog("startAutomaticWorkflow", "⚠ Auto-detection failed")
+                    handler.post {
+                        updateStatus("⚠️ Detection failed")
+                        Toast.makeText(this, "Board detection failed. Using defaults.", Toast.LENGTH_LONG).show()
+                    }
+                }
+                
+                bitmapPool.recycle(fullBitmap)
+                
+            } catch (e: Exception) {
+                addLog("startAutomaticWorkflow", "ERROR - ${e.message}")
+                e.printStackTrace()
+                handler.post {
+                    updateStatus("⚠️ Error")
+                }
+            }
+        }.start()
+    }
+    
+    /**
+     * Show red border around detected board area for 3 seconds
+     */
+    private fun showBoardDetectionBorder() {
+        addLog("showBoardDetectionBorder", "Showing red border at X=$boardX, Y=$boardY, Size=$boardSize")
+        
+        val borderView = View(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        
+        val layoutParams = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams(
+                boardSize,
+                boardSize,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            )
+        } else {
+            WindowManager.LayoutParams(
+                boardSize,
+                boardSize,
+                WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            )
+        }
+        
+        layoutParams.gravity = Gravity.TOP or Gravity.START
+        layoutParams.x = boardX
+        layoutParams.y = boardY
+        
+        // Create custom drawable for red border
+        val paint = Paint().apply {
+            color = Color.RED
+            style = Paint.Style.STROKE
+            strokeWidth = 15f
+            isAntiAlias = true
+        }
+        
+        borderView.background = object : android.graphics.drawable.Drawable() {
+            override fun draw(canvas: Canvas) {
+                val rect = RectF(7.5f, 7.5f, bounds.width() - 7.5f, bounds.height() - 7.5f)
+                canvas.drawRect(rect, paint)
+            }
+            
+            override fun setAlpha(alpha: Int) {
+                paint.alpha = alpha
+            }
+            
+            override fun setColorFilter(colorFilter: ColorFilter?) {
+                paint.colorFilter = colorFilter
+            }
+            
+            override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+        }
+        
+        try {
+            windowManager?.addView(borderView, layoutParams)
+            addLog("showBoardDetectionBorder", "✓ Red border displayed")
+            
+            // Remove border after 3 seconds
+            handler.postDelayed({
+                try {
+                    windowManager?.removeView(borderView)
+                    addLog("showBoardDetectionBorder", "Border removed after 3 seconds")
+                } catch (e: Exception) {
+                    addLog("showBoardDetectionBorder", "Error removing border: ${e.message}")
+                }
+            }, 3000)
+        } catch (e: Exception) {
+            addLog("showBoardDetectionBorder", "Error showing border: ${e.message}")
+        }
+    }
+    
+    /**
+     * Send start command automatically (with callback)
+     */
+    private fun sendStartCommandAutomatic(callback: (Boolean) -> Unit) {
+        addLog("sendStartCommandAutomatic", "Sending game start request...")
+        
+        Thread {
+            try {
+                val request = Request.Builder()
+                    .url("$ngrokUrl/start")
+                    .post("".toRequestBody(null))
+                    .build()
+                
+                client.newCall(request).enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        addLog("sendStartCommandAutomatic", "FAILED - ${e.message}")
+                        handler.post { callback(false) }
+                    }
+                    
+                    override fun onResponse(call: Call, response: Response) {
+                        val responseBody = response.body?.string() ?: ""
+                        addLog("sendStartCommandAutomatic", "Response ${response.code}: $responseBody")
+                        
+                        if (response.isSuccessful) {
+                            gameStarted = true
+                            addLog("sendStartCommandAutomatic", "✓ Game started successfully")
+                            handler.post { callback(true) }
+                        } else {
+                            addLog("sendStartCommandAutomatic", "FAILED - Server error ${response.code}")
+                            handler.post { callback(false) }
+                        }
+                    }
+                })
+            } catch (e: Exception) {
+                addLog("sendStartCommandAutomatic", "EXCEPTION - ${e.message}")
+                handler.post { callback(false) }
+            }
+        }.start()
+    }
+    
+    /**
+     * Send color command automatically (with callback)
+     */
+    private fun sendColorCommandAutomatic(color: String, callback: (Boolean) -> Unit) {
+        addLog("sendColorCommandAutomatic", "Sending color: $color")
+        
+        Thread {
+            try {
+                val requestBody = color.toRequestBody(null)
+                val request = Request.Builder()
+                    .url("$ngrokUrl/move")
+                    .post(requestBody)
+                    .build()
+                
+                client.newCall(request).enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        addLog("sendColorCommandAutomatic", "FAILED - ${e.message}")
+                        handler.post { callback(false) }
+                    }
+                    
+                    override fun onResponse(call: Call, response: Response) {
+                        val responseBody = response.body?.string() ?: ""
+                        addLog("sendColorCommandAutomatic", "Response ${response.code}: $responseBody")
+                        
+                        if (response.isSuccessful) {
+                            addLog("sendColorCommandAutomatic", "✓ Color set to $color")
+                            
+                            // If engine made first move (when user chose black), execute it
+                            if (color == "black" && isAutoPlayEnabled && responseBody.isNotEmpty()) {
+                                val movePattern = "[a-h][1-8][a-h][1-8][qrbn]?".toRegex()
+                                val engineMove = movePattern.find(responseBody)?.value
+                                if (engineMove != null) {
+                                    addLog("sendColorCommandAutomatic", "Engine moved first: $engineMove")
+                                    handler.post {
+                                        executeMoveAutomatically(engineMove)
+                                    }
+                                }
+                            }
+                            
+                            handler.post { callback(true) }
+                        } else {
+                            addLog("sendColorCommandAutomatic", "FAILED - Server error ${response.code}")
+                            handler.post { callback(false) }
+                        }
+                    }
+                })
+            } catch (e: Exception) {
+                addLog("sendColorCommandAutomatic", "EXCEPTION - ${e.message}")
+                handler.post { callback(false) }
+            }
+        }.start()
+    }
+    
     private fun sendStartCommand() {
         addLog("sendStartCommand", "CALLED - Initiating game start")
         
@@ -421,11 +720,7 @@ class MoveDetectionOverlayService : Service() {
         
         // Get all button references
         val startButton = overlayView.findViewById<Button>(R.id.startButton)
-        val blackButton = overlayView.findViewById<Button>(R.id.blackButton)
-        val whiteButton = overlayView.findViewById<Button>(R.id.whiteButton)
-        val detectButton = overlayView.findViewById<Button>(R.id.detectButton)
         val stopButton = overlayView.findViewById<Button>(R.id.stopButton)
-        val flipButton = overlayView.findViewById<Button>(R.id.flipButton)
         val updateApiButton = overlayView.findViewById<Button>(R.id.updateApiButton)
         val minimizeButton = overlayView.findViewById<Button>(R.id.minimizeButton)
         val autoPlayCheckbox = overlayView.findViewById<CheckBox>(R.id.autoPlayCheckbox)
@@ -437,33 +732,13 @@ class MoveDetectionOverlayService : Service() {
         
         // Set up button handlers
         startButton.setOnClickListener {
-            addLog("UI", "Start button clicked")
-            sendStartCommand()
-        }
-        
-        blackButton.setOnClickListener {
-            addLog("UI", "Black button clicked")
-            sendColorCommand("black")
-        }
-        
-        whiteButton.setOnClickListener {
-            addLog("UI", "White button clicked")
-            sendColorCommand("white")
-        }
-        
-        detectButton.setOnClickListener {
-            addLog("UI", "Detect button clicked")
-            startDetection()
+            addLog("UI", "🤖 Auto Start button clicked")
+            startAutomaticWorkflow()
         }
         
         stopButton.setOnClickListener {
             addLog("UI", "Stop button clicked")
             stopDetection()
-        }
-        
-        flipButton.setOnClickListener {
-            addLog("UI", "Flip button clicked")
-            flipBoard()
         }
         
         updateApiButton.setOnClickListener {

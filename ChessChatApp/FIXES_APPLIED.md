@@ -31,6 +31,29 @@
 **Files Modified**:
 - `faluda/ChessChatApp/ChessChatApp/app/src/main/java/com/chesschat/app/ChessBoardDetector.kt`
 
+### Issue 3: Manual Board Configuration Feature
+**Feature Request**: Add ability to manually configure board position when automatic detection fails.
+
+**Implementation**: Created a comprehensive manual board setup feature with:
+- **Manual Setup Button**: Added "📐 Setup Board" button to compact overlay UI
+- **Draggable Square Overlay**: Interactive green overlay with red corner/edge handles
+- **Resizable from All Sides**: Can resize by dragging corners (all 4) or edges (top/bottom/left/right)
+- **Color Selection Dialog**: Asks user which color (White/Black) is at bottom of board
+- **Visual Feedback**: Shows instructions and DONE/CANCEL buttons during setup
+- **Persistent Storage**: Saves configuration to SharedPreferences
+- **Preview Border**: Shows red border for 3 seconds after configuration
+
+**User Workflow**:
+1. Tap "📐 Setup Board" button in compact overlay
+2. Drag/resize the green square to match the chessboard
+3. Tap "✓ DONE" when positioned correctly
+4. Select which color is at bottom (White or Black)
+5. Configuration is saved and ready to use
+
+**Files Modified**:
+- `faluda/ChessChatApp/ChessChatApp/app/src/main/res/layout/overlay_compact.xml`
+- `faluda/ChessChatApp/ChessChatApp/app/src/main/java/com/chesschat/app/MoveDetectionOverlayService.kt`
+
 ## How the Fix Works
 
 ### Improved Detection Algorithm

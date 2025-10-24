@@ -115,6 +115,16 @@
             android:padding="4dp" />
     </ScrollView>
 
+    <!-- Copy Logs Button -->
+    <Button
+        android:id="@+id/copyLogsButton"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:text="📋 Copy Logs"
+        android:textSize="12sp"
+        android:layout_marginTop="4dp"
+        android:background="@android:drawable/btn_default" />
+
     <!-- Minimize Button -->
     <Button
         android:id="@+id/minimizeButton"

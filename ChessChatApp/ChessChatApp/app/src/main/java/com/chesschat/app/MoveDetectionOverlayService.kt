@@ -940,10 +940,8 @@ class MoveDetectionOverlayService : Service() {
             addLog("showUpdateApiDialog", "Dialog displayed")
         }
     }
-private var manualSetupOverlay: View? = null
 private var manualBoardX = 50
 private var manualBoardY = 300
-private var manualBoardSize = 600
 
 /**
  * Start manual board setup with draggable/resizable square

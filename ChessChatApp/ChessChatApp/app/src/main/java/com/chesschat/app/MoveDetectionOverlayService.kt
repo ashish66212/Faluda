@@ -314,13 +314,9 @@ class MoveDetectionOverlayService : Service() {
         val manualColor = if (isFlipped) "black" else "white"
         playerColor = manualColor
         
-        // Backend API expects ENGINE's color, not user's color
-        // If user is white → engine is black
-        // If user is black → engine is white
-        val engineColor = if (manualColor == "white") "black" else "white"
-        
-        addLog("startAutomaticWorkflow", "  Your color: $manualColor (${if (isFlipped) "Black" else "White"} at bottom)")
-        addLog("startAutomaticWorkflow", "  Engine color: $engineColor")
+        // Send the SAME color as selected by user during board setup
+        addLog("startAutomaticWorkflow", "  Your selected color: $manualColor (${if (isFlipped) "Black" else "White"} at bottom)")
+        addLog("startAutomaticWorkflow", "  Sending color to engine: $manualColor")
         
         handler.post {
             // Show visual red border feedback
@@ -331,10 +327,10 @@ class MoveDetectionOverlayService : Service() {
                 addLog("startAutomaticWorkflow", "Step 1: Starting game via API...")
                 sendStartCommandAutomatic { success ->
                     if (success) {
-                        // Send ENGINE's color to API (inverted from user's color)
+                        // Send the SAME color to API as user selected
                         handler.postDelayed({
-                            addLog("startAutomaticWorkflow", "Step 2: Setting engine color '$engineColor' on server (you are '$manualColor')...")
-                            sendColorCommandAutomatic(engineColor) { colorSuccess ->
+                            addLog("startAutomaticWorkflow", "Step 2: Setting color '$manualColor' on server...")
+                            sendColorCommandAutomatic(manualColor) { colorSuccess ->
                                 if (colorSuccess) {
                                     // Start move detection
                                     handler.postDelayed({
@@ -510,8 +506,8 @@ class MoveDetectionOverlayService : Service() {
                             addLog("sendColorCommandAutomatic", "Auto-play enabled: $isAutoPlayEnabled")
                             
                             // If engine made first move, execute it automatically
-                            // - When user chose "white": we send "black" → engine is BLACK → user moves first → no move to execute
-                            // - When user chose "black": we send "white" → engine is WHITE → engine moves first (e.g., "e2e4") → execute it
+                            // - When user chose "white": we send "white" → user plays white → user moves first → no move to execute
+                            // - When user chose "black": we send "black" → user plays black → engine moves first (e.g., "e2e4") → execute it
                             if (engineMove != null && isAutoPlayEnabled && responseBody.isNotEmpty()) {
                                 addLog("sendColorCommandAutomatic", "✓ Engine made first move: $engineMove - EXECUTING NOW")
                                 handler.post {

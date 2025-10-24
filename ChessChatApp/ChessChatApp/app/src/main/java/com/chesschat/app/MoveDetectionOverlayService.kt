@@ -1561,49 +1561,56 @@ private fun copyLogsToClipboard() {
             return
         }
 
-        addLog("executeMoveAutomatically", "Accessibility service OK - using CLICK format (tap-tap)")
+        addLog("executeMoveAutomatically", "Accessibility service OK - using TAP-TAP ONLY method")
         
-        // Simulate CLICK format: tap from square, then tap to square
-        // First tap (select piece)
+        // TAP-TAP ONLY with IMPROVED timing for maximum reliability
+        addLog("executeMoveAutomatically", "Step 1: First tap at $fromSquare")
+        
+        // First tap: longer 300ms press for better detection
         val firstTapSuccess = touchSimulator.simulateTouch(
-            fromCoords.first, fromCoords.second
+            fromCoords.first, fromCoords.second, 300
         )
         
         if (!firstTapSuccess) {
             addLog("executeMoveAutomatically", "FAILED - First tap failed at $fromSquare")
             updateStatus("⚠️ First tap failed")
-            Toast.makeText(this, "Touch failed - check accessibility", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "First tap failed - check accessibility service", Toast.LENGTH_LONG).show()
             return
         }
         
-        addLog("executeMoveAutomatically", "First tap SUCCESS at $fromSquare")
+        addLog("executeMoveAutomatically", "✓ First tap SUCCESS at $fromSquare")
         
-        // Minimal delay between taps (200ms to allow chess app to register selection)
+        // LONGER delay between taps (600ms) to ensure chess app registers the selection
+        // This gives the chess app UI time to show the piece is selected
         handler.postDelayed({
-            addLog("executeMoveAutomatically", "Executing second tap at $toSquare")
+            addLog("executeMoveAutomatically", "Step 2: Second tap at $toSquare")
             
-            // Second tap (move piece to destination)
+            // Second tap: longer 300ms press for better detection
             val secondTapSuccess = touchSimulator.simulateTouch(
-                toCoords.first, toCoords.second
+                toCoords.first, toCoords.second, 300
             )
             
             if (secondTapSuccess) {
+                addLog("executeMoveAutomatically", "✓ Second tap SUCCESS at $toSquare")
                 addLog("executeMoveAutomatically", "SUCCESS - Move executed: $move")
                 updateStatus("✅ Played: $move")
                 
-                // Start detection IMMEDIATELY (0ms delay) after move execution
-                addLog("executeMoveAutomatically", "Restarting detection NOW (0ms delay)")
-                resumeDetectionImmediately()
+                // Wait for move animation to complete before resuming detection
+                handler.postDelayed({
+                    addLog("executeMoveAutomatically", "Resuming detection after move animation")
+                    resumeDetectionImmediately()
+                }, 400)
             } else {
-                addLog("executeMoveAutomatically", "FAILED - Second tap failed")
-                addLog("executeMoveAutomatically", "Possible reasons:")
-                addLog("executeMoveAutomatically", "  1. Accessibility service crashed")
+                addLog("executeMoveAutomatically", "FAILED - Second tap failed at $toSquare")
+                addLog("executeMoveAutomatically", "Possible causes:")
+                addLog("executeMoveAutomatically", "  1. Accessibility service disconnected")
                 addLog("executeMoveAutomatically", "  2. Gesture queue full")
-                addLog("executeMoveAutomatically", "  3. Coordinates out of bounds")
+                addLog("executeMoveAutomatically", "  3. Invalid coordinates")
+                addLog("executeMoveAutomatically", "  4. Chess app not responding")
                 updateStatus("⚠️ Second tap failed")
-                Toast.makeText(this, "Second tap failed - check accessibility", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Second tap failed - check accessibility service", Toast.LENGTH_LONG).show()
             }
-        }, 200)
+        }, 600)
     }
     
     /**

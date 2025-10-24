@@ -460,18 +460,20 @@ class ChessBoardDetector {
     
     /**
      * Convert row/col coordinates to UCI notation (e.g., e2, e4)
-     * Handles board flipping
+     * Handles board orientation
+     * 
+     * FILES (a-h) NEVER FLIP - always left to right
+     * RANKS (1-8) flip based on color selection
      */
     private fun squareToUCI(row: Int, col: Int, isFlipped: Boolean): String {
-        val actualRow: Int
-        val actualCol: Int
+        // Files (columns) NEVER flip - always a-h from left to right
+        val actualCol = col
         
-        if (isFlipped) {
-            actualRow = row
-            actualCol = 7 - col
+        // Ranks (rows) flip based on color selection
+        val actualRow = if (isFlipped) {
+            row  // Black: no row inversion
         } else {
-            actualRow = 7 - row
-            actualCol = col
+            7 - row  // White: row inversion for screen coords
         }
         
         val file = ('a' + actualCol).toString()

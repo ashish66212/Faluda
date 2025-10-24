@@ -102,11 +102,11 @@ class MoveDetectionOverlayService : Service() {
     private var currentProfile: ChessAppProfile = ChessAppProfiles.profiles.last()
     private var detectionInterval = 100L  // Optimized detection interval (100ms for balance of speed and accuracy)
     
-    // Network
+    // Network (increased timeouts for Stockfish computation time)
     private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
         .build()
     
@@ -304,6 +304,10 @@ class MoveDetectionOverlayService : Service() {
             return
         }
         
+        // Enable auto-play automatically for automatic workflow
+        isAutoPlayEnabled = true
+        addLog("startAutomaticWorkflow", "✓ Auto-play ENABLED automatically")
+        
         addLog("startAutomaticWorkflow", "✓ Using MANUAL SETUP configuration")
         addLog("startAutomaticWorkflow", "  Position: X=$boardX, Y=$boardY, Size=$boardSize")
         
@@ -496,13 +500,22 @@ class MoveDetectionOverlayService : Service() {
                             val movePattern = "[a-h][1-8][a-h][1-8][qrbn]?".toRegex()
                             val engineMove = movePattern.find(responseBody)?.value
                             
+                            addLog("sendColorCommandAutomatic", "Extracted move from response: ${engineMove ?: "NONE"}")
+                            addLog("sendColorCommandAutomatic", "Auto-play enabled: $isAutoPlayEnabled")
+                            
                             // If engine made first move, execute it automatically
                             // - When user chose "white": engine is WHITE and makes first move (e.g., "Engine is white. First move: e2e4")
                             // - When user chose "black": engine is BLACK and makes first move (e.g., "e2e4")
                             if (engineMove != null && isAutoPlayEnabled && responseBody.isNotEmpty()) {
-                                addLog("sendColorCommandAutomatic", "Engine made first move: $engineMove")
+                                addLog("sendColorCommandAutomatic", "✓ Engine made first move: $engineMove - EXECUTING NOW")
                                 handler.post {
                                     executeMoveAutomatically(engineMove)
+                                }
+                            } else {
+                                if (engineMove == null) {
+                                    addLog("sendColorCommandAutomatic", "No move to execute (engine didn't move first)")
+                                } else if (!isAutoPlayEnabled) {
+                                    addLog("sendColorCommandAutomatic", "Move found but auto-play is DISABLED")
                                 }
                             }
                             

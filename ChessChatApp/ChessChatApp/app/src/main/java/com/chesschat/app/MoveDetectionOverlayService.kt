@@ -270,10 +270,10 @@ class MoveDetectionOverlayService : Service() {
     
     /**
      * AUTOMATIC WORKFLOW: Single button does everything
-     * 1. Uses manual setup if configured, otherwise auto-detects board position
+     * 1. Uses manual setup (board position AND color) if configured, otherwise auto-detects
      * 2. Shows visual feedback (red border)
      * 3. Sends game start to API
-     * 4. Detects and sends color to API (or uses manual setup color)
+     * 4. Sends your selected color to API
      * 5. Starts move detection automatically
      */
     private fun startAutomaticWorkflow() {
@@ -295,12 +295,13 @@ class MoveDetectionOverlayService : Service() {
         
         // Check if manual setup was already done
         if (boardAutoDetected && boardX > 0 && boardY > 0 && boardSize > 0) {
-            addLog("startAutomaticWorkflow", "✓ Using MANUAL SETUP board configuration")
+            addLog("startAutomaticWorkflow", "✓ Using MANUAL SETUP configuration")
             addLog("startAutomaticWorkflow", "  Position: X=$boardX, Y=$boardY, Size=$boardSize")
-            addLog("startAutomaticWorkflow", "  Orientation: ${if (isFlipped) "Black bottom" else "White bottom"}")
             
-            val detectedColor = if (isFlipped) "black" else "white"
-            playerColor = detectedColor
+            val manualColor = if (isFlipped) "black" else "white"
+            playerColor = manualColor
+            
+            addLog("startAutomaticWorkflow", "  Your color: $manualColor (${if (isFlipped) "Black" else "White"} at bottom)")
             
             handler.post {
                 // Show visual red border feedback
@@ -311,15 +312,15 @@ class MoveDetectionOverlayService : Service() {
                     addLog("startAutomaticWorkflow", "Step 1: Starting game via API...")
                     sendStartCommandAutomatic { success ->
                         if (success) {
-                            // Send detected color to API
+                            // Send your manual color selection to API
                             handler.postDelayed({
-                                addLog("startAutomaticWorkflow", "Step 2: Sending color '$detectedColor' to API...")
-                                sendColorCommandAutomatic(detectedColor) { colorSuccess ->
+                                addLog("startAutomaticWorkflow", "Step 2: Setting your color '$manualColor' on server...")
+                                sendColorCommandAutomatic(manualColor) { colorSuccess ->
                                     if (colorSuccess) {
                                         // Start move detection
                                         handler.postDelayed({
                                             addLog("startAutomaticWorkflow", "Step 3: Starting move detection...")
-                                            updateStatus("✅ Auto-playing as $detectedColor")
+                                            updateStatus("✅ Auto-playing as $manualColor")
                                             startDetection()
                                             addLog("startAutomaticWorkflow", "=== AUTOMATIC WORKFLOW COMPLETE ===")
                                         }, 500)

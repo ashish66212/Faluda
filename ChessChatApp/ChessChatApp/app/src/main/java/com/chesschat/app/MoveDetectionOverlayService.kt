@@ -84,6 +84,12 @@ class MoveDetectionOverlayService : Service() {
     private var isFlipped = false
     private var boardAutoDetected = false  // Track if board has been automatically detected
     
+    // Manual Board Setup
+    private var manualSetupOverlay: View? = null
+    private var manualBoardX = 50
+    private var manualBoardY = 300
+    private var manualBoardSize = 600
+    
     // App Profile
     private var currentProfile: ChessAppProfile = ChessAppProfiles.profiles.last()
     private var detectionInterval = 100L  // Optimized detection interval (100ms for balance of speed and accuracy)
@@ -722,6 +728,7 @@ class MoveDetectionOverlayService : Service() {
         val startButton = overlayView.findViewById<Button>(R.id.startButton)
         val stopButton = overlayView.findViewById<Button>(R.id.stopButton)
         val updateApiButton = overlayView.findViewById<Button>(R.id.updateApiButton)
+        val manualSetupButton = overlayView.findViewById<Button>(R.id.manualSetupButton)
         val minimizeButton = overlayView.findViewById<Button>(R.id.minimizeButton)
         val autoPlayCheckbox = overlayView.findViewById<CheckBox>(R.id.autoPlayCheckbox)
         statusTextView = overlayView.findViewById(R.id.statusTextView)
@@ -744,6 +751,11 @@ class MoveDetectionOverlayService : Service() {
         updateApiButton.setOnClickListener {
             addLog("UI", "Update API button clicked")
             showUpdateApiDialog()
+        }
+        
+        manualSetupButton.setOnClickListener {
+            addLog("UI", "📐 Manual Setup button clicked")
+            startManualBoardSetup()
         }
         
         minimizeButton.setOnClickListener {
@@ -922,6 +934,401 @@ class MoveDetectionOverlayService : Service() {
             addLog("showUpdateApiDialog", "Dialog displayed")
         }
     }
+private var manualSetupOverlay: View? = null
+private var manualBoardX = 50
+private var manualBoardY = 300
+private var manualBoardSize = 600
+
+/**
+ * Start manual board setup with draggable/resizable square
+ */
+private fun startManualBoardSetup() {
+    addLog("startManualBoardSetup", "=== MANUAL BOARD SETUP STARTED ===")
+    
+    if (imageReader == null) {
+        addLog("startManualBoardSetup", "ERROR - Screen capture not initialized")
+        Toast.makeText(this, "Please start from main app first", Toast.LENGTH_LONG).show()
+        return
+    }
+    
+    updateStatus("📐 Manual Setup...")
+    
+    // Get screen dimensions
+    val metrics = DisplayMetrics()
+    windowManager?.defaultDisplay?.getMetrics(metrics)
+    val screenWidth = metrics.widthPixels
+    val screenHeight = metrics.heightPixels
+    
+    // Initialize with current or default values
+    manualBoardX = if (boardX > 0) boardX else 50
+    manualBoardY = if (boardY > 0) boardY else 300
+    manualBoardSize = if (boardSize > 0) boardSize else Math.min(screenWidth - 100, 600)
+    
+    addLog("startManualBoardSetup", "Initial: X=$manualBoardX, Y=$manualBoardY, Size=$manualBoardSize")
+    
+    // Create the manual setup overlay
+    createManualSetupOverlay()
+}
+
+/**
+ * Create draggable and resizable board setup overlay
+ */
+private fun createManualSetupOverlay() {
+    val container = FrameLayout(this)
+    
+    // Main board area (green semi-transparent)
+    val boardArea = View(this).apply {
+        setBackgroundColor(Color.argb(100, 0, 255, 0))
+    }
+    
+    // Border view with handles
+    val borderView = View(this).apply {
+        setBackgroundColor(Color.TRANSPARENT)
+    }
+    
+    // Custom drawable for border with resize handles
+    val paint = Paint().apply {
+        color = Color.GREEN
+        style = Paint.Style.STROKE
+        strokeWidth = 10f
+        isAntiAlias = true
+    }
+    
+    val handlePaint = Paint().apply {
+        color = Color.RED
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    
+    borderView.background = object : android.graphics.drawable.Drawable() {
+        override fun draw(canvas: Canvas) {
+            val w = bounds.width().toFloat()
+            val h = bounds.height().toFloat()
+            
+            // Draw border
+            canvas.drawRect(5f, 5f, w - 5f, h - 5f, paint)
+            
+            // Draw corner handles (20x20 pixels)
+            val handleSize = 20f
+            canvas.drawCircle(5f, 5f, handleSize, handlePaint) // Top-left
+            canvas.drawCircle(w - 5f, 5f, handleSize, handlePaint) // Top-right
+            canvas.drawCircle(5f, h - 5f, handleSize, handlePaint) // Bottom-left
+            canvas.drawCircle(w - 5f, h - 5f, handleSize, handlePaint) // Bottom-right
+            
+            // Draw edge handles
+            canvas.drawCircle(w / 2, 5f, handleSize, handlePaint) // Top
+            canvas.drawCircle(w / 2, h - 5f, handleSize, handlePaint) // Bottom
+            canvas.drawCircle(5f, h / 2, handleSize, handlePaint) // Left
+            canvas.drawCircle(w - 5f, h / 2, handleSize, handlePaint) // Right
+        }
+        
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+        }
+        
+        override fun setColorFilter(colorFilter: ColorFilter?) {
+            paint.colorFilter = colorFilter
+        }
+        
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+    }
+    
+    container.addView(boardArea, FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.MATCH_PARENT
+    ))
+    
+    container.addView(borderView, FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.MATCH_PARENT
+    ))
+    
+    // Instructions text
+    val instructions = TextView(this).apply {
+        text = "Drag corners/edges to resize\nTap DONE when ready"
+        textSize = 12f
+        setTextColor(Color.WHITE)
+        setBackgroundColor(Color.argb(200, 0, 0, 0))
+        gravity = Gravity.CENTER
+        setPadding(10, 10, 10, 10)
+    }
+    
+    container.addView(instructions, FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.WRAP_CONTENT,
+        FrameLayout.LayoutParams.WRAP_CONTENT
+    ).apply {
+        gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+        bottomMargin = 10
+    })
+    
+    // DONE button
+    val doneButton = Button(this).apply {
+        text = "✓ DONE"
+        textSize = 14f
+        setBackgroundColor(Color.argb(220, 0, 200, 0))
+        setTextColor(Color.WHITE)
+        setOnClickListener {
+            finishManualSetup()
+        }
+    }
+    
+    container.addView(doneButton, FrameLayout.LayoutParams(
+        dp(100),
+        dp(50)
+    ).apply {
+        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        topMargin = dp(10)
+    })
+    
+    // CANCEL button
+    val cancelButton = Button(this).apply {
+        text = "✗ CANCEL"
+        textSize = 14f
+        setBackgroundColor(Color.argb(220, 200, 0, 0))
+        setTextColor(Color.WHITE)
+        setOnClickListener {
+            cancelManualSetup()
+        }
+    }
+    
+    container.addView(cancelButton, FrameLayout.LayoutParams(
+        dp(100),
+        dp(50)
+    ).apply {
+        gravity = Gravity.TOP or Gravity.END
+        topMargin = dp(10)
+        rightMargin = dp(10)
+    })
+    
+    // Create layout params
+    val layoutParams = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        WindowManager.LayoutParams(
+            manualBoardSize,
+            manualBoardSize,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+    } else {
+        WindowManager.LayoutParams(
+            manualBoardSize,
+            manualBoardSize,
+            WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+    }
+    
+    layoutParams.gravity = Gravity.TOP or Gravity.START
+    layoutParams.x = manualBoardX
+    layoutParams.y = manualBoardY
+    
+    // Make draggable and resizable
+    makeManualSetupDraggable(container, layoutParams)
+    
+    manualSetupOverlay = container
+    windowManager?.addView(manualSetupOverlay, layoutParams)
+    
+    addLog("createManualSetupOverlay", "✓ Manual setup overlay displayed")
+}
+
+/**
+ * Make the manual setup overlay draggable and resizable
+ */
+private fun makeManualSetupDraggable(view: View, layoutParams: WindowManager.LayoutParams) {
+    var initialX = 0
+    var initialY = 0
+    var initialWidth = 0
+    var initialHeight = 0
+    var initialTouchX = 0f
+    var initialTouchY = 0f
+    var resizeMode = ResizeMode.NONE
+    
+    enum class ResizeMode {
+        NONE, MOVE, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT,
+        TOP, BOTTOM, LEFT, RIGHT
+    }
+    
+    view.setOnTouchListener { _, event ->
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                initialX = layoutParams.x
+                initialY = layoutParams.y
+                initialWidth = layoutParams.width
+                initialHeight = layoutParams.height
+                initialTouchX = event.rawX
+                initialTouchY = event.rawY
+                
+                // Determine what to resize/move based on touch position
+                val touchX = event.x
+                val touchY = event.y
+                val handleSize = 60f // Touch area for handles
+                
+                resizeMode = when {
+                    // Corners
+                    touchX < handleSize && touchY < handleSize -> ResizeMode.TOP_LEFT
+                    touchX > initialWidth - handleSize && touchY < handleSize -> ResizeMode.TOP_RIGHT
+                    touchX < handleSize && touchY > initialHeight - handleSize -> ResizeMode.BOTTOM_LEFT
+                    touchX > initialWidth - handleSize && touchY > initialHeight - handleSize -> ResizeMode.BOTTOM_RIGHT
+                    // Edges
+                    touchY < handleSize -> ResizeMode.TOP
+                    touchY > initialHeight - handleSize -> ResizeMode.BOTTOM
+                    touchX < handleSize -> ResizeMode.LEFT
+                    touchX > initialWidth - handleSize -> ResizeMode.RIGHT
+                    // Center - move
+                    else -> ResizeMode.MOVE
+                }
+                
+                true
+            }
+            
+            MotionEvent.ACTION_MOVE -> {
+                val deltaX = (event.rawX - initialTouchX).toInt()
+                val deltaY = (event.rawY - initialTouchY).toInt()
+                
+                when (resizeMode) {
+                    ResizeMode.MOVE -> {
+                        layoutParams.x = initialX + deltaX
+                        layoutParams.y = initialY + deltaY
+                    }
+                    ResizeMode.TOP_LEFT -> {
+                        layoutParams.x = initialX + deltaX
+                        layoutParams.y = initialY + deltaY
+                        layoutParams.width = (initialWidth - deltaX).coerceAtLeast(200)
+                        layoutParams.height = (initialHeight - deltaY).coerceAtLeast(200)
+                    }
+                    ResizeMode.TOP_RIGHT -> {
+                        layoutParams.y = initialY + deltaY
+                        layoutParams.width = (initialWidth + deltaX).coerceAtLeast(200)
+                        layoutParams.height = (initialHeight - deltaY).coerceAtLeast(200)
+                    }
+                    ResizeMode.BOTTOM_LEFT -> {
+                        layoutParams.x = initialX + deltaX
+                        layoutParams.width = (initialWidth - deltaX).coerceAtLeast(200)
+                        layoutParams.height = (initialHeight + deltaY).coerceAtLeast(200)
+                    }
+                    ResizeMode.BOTTOM_RIGHT -> {
+                        layoutParams.width = (initialWidth + deltaX).coerceAtLeast(200)
+                        layoutParams.height = (initialHeight + deltaY).coerceAtLeast(200)
+                    }
+                    ResizeMode.TOP -> {
+                        layoutParams.y = initialY + deltaY
+                        layoutParams.height = (initialHeight - deltaY).coerceAtLeast(200)
+                    }
+                    ResizeMode.BOTTOM -> {
+                        layoutParams.height = (initialHeight + deltaY).coerceAtLeast(200)
+                    }
+                    ResizeMode.LEFT -> {
+                        layoutParams.x = initialX + deltaX
+                        layoutParams.width = (initialWidth - deltaX).coerceAtLeast(200)
+                    }
+                    ResizeMode.RIGHT -> {
+                        layoutParams.width = (initialWidth + deltaX).coerceAtLeast(200)
+                    }
+                    else -> {}
+                }
+                
+                // Keep square shape
+                val size = Math.max(layoutParams.width, layoutParams.height)
+                layoutParams.width = size
+                layoutParams.height = size
+                
+                windowManager?.updateViewLayout(view, layoutParams)
+                true
+            }
+            
+            MotionEvent.ACTION_UP -> {
+                // Save current position
+                manualBoardX = layoutParams.x
+                manualBoardY = layoutParams.y
+                manualBoardSize = layoutParams.width
+                addLog("makeManualSetupDraggable", "Position: X=$manualBoardX, Y=$manualBoardY, Size=$manualBoardSize")
+                true
+            }
+            
+            else -> false
+        }
+    }
+}
+
+/**
+ * Finish manual setup and ask for color
+ */
+private fun finishManualSetup() {
+    addLog("finishManualSetup", "User confirmed board position")
+    addLog("finishManualSetup", "Final: X=$manualBoardX, Y=$manualBoardY, Size=$manualBoardSize")
+    
+    // Remove manual setup overlay
+    manualSetupOverlay?.let {
+        windowManager?.removeView(it)
+    }
+    manualSetupOverlay = null
+    
+    // Ask for color (white or black at bottom)
+    handler.post {
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Which color is at the bottom?")
+            .setMessage("Select the piece color that is at the BOTTOM of the board:")
+            .setPositiveButton("⬜ WHITE") { _, _ ->
+                confirmManualSetup(isWhiteBottom = true)
+            }
+            .setNegativeButton("⬛ BLACK") { _, _ ->
+                confirmManualSetup(isWhiteBottom = false)
+            }
+            .setCancelable(false)
+            .create()
+        
+        // Set window type for overlay permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+        } else {
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_PHONE)
+        }
+        
+        dialog.show()
+    }
+}
+
+/**
+ * Confirm manual setup with color selection
+ */
+private fun confirmManualSetup(isWhiteBottom: Boolean) {
+    boardX = manualBoardX
+    boardY = manualBoardY
+    boardSize = manualBoardSize
+    isFlipped = !isWhiteBottom
+    boardAutoDetected = true // Mark as configured
+    
+    saveSettings()
+    
+    val colorText = if (isWhiteBottom) "White" else "Black"
+    addLog("confirmManualSetup", "✓ MANUAL SETUP COMPLETE")
+    addLog("confirmManualSetup", "  Board: X=$boardX, Y=$boardY, Size=$boardSize")
+    addLog("confirmManualSetup", "  Color: $colorText at bottom")
+    
+    updateStatus("✓ Manual Setup Done")
+    Toast.makeText(this, "Board configured! $colorText at bottom", Toast.LENGTH_LONG).show()
+    
+    // Show preview border for 3 seconds
+    showBoardDetectionBorder()
+}
+
+/**
+ * Cancel manual setup
+ */
+private fun cancelManualSetup() {
+    addLog("cancelManualSetup", "Manual setup cancelled by user")
+    
+    manualSetupOverlay?.let {
+        windowManager?.removeView(it)
+    }
+    manualSetupOverlay = null
+    
+    updateStatus("✗ Setup Cancelled")
+    Toast.makeText(this, "Manual setup cancelled", Toast.LENGTH_SHORT).show()
+}
 
     private fun captureScreen() {
         var fullBitmap: Bitmap? = null

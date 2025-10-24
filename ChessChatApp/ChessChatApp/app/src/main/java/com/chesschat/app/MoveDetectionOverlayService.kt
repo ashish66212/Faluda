@@ -1,6 +1,8 @@
 package com.chesschat.app
 
 import android.app.*
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -268,10 +270,10 @@ class MoveDetectionOverlayService : Service() {
     
     /**
      * AUTOMATIC WORKFLOW: Single button does everything
-     * 1. Detects board position and orientation
+     * 1. Uses manual setup if configured, otherwise auto-detects board position
      * 2. Shows visual feedback (red border)
      * 3. Sends game start to API
-     * 4. Detects and sends color to API
+     * 4. Detects and sends color to API (or uses manual setup color)
      * 5. Starts move detection automatically
      */
     private fun startAutomaticWorkflow() {
@@ -288,6 +290,50 @@ class MoveDetectionOverlayService : Service() {
             updateStatus("⚠️ No screen capture")
             addLog("startAutomaticWorkflow", "FAILED - Screen capture not initialized!")
             Toast.makeText(this, "Please restart detection from main app", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        // Check if manual setup was already done
+        if (boardAutoDetected && boardX > 0 && boardY > 0 && boardSize > 0) {
+            addLog("startAutomaticWorkflow", "✓ Using MANUAL SETUP board configuration")
+            addLog("startAutomaticWorkflow", "  Position: X=$boardX, Y=$boardY, Size=$boardSize")
+            addLog("startAutomaticWorkflow", "  Orientation: ${if (isFlipped) "Black bottom" else "White bottom"}")
+            
+            val detectedColor = if (isFlipped) "black" else "white"
+            playerColor = detectedColor
+            
+            handler.post {
+                // Show visual red border feedback
+                showBoardDetectionBorder()
+                
+                // Start game via API (after 1 second)
+                handler.postDelayed({
+                    addLog("startAutomaticWorkflow", "Step 1: Starting game via API...")
+                    sendStartCommandAutomatic { success ->
+                        if (success) {
+                            // Send detected color to API
+                            handler.postDelayed({
+                                addLog("startAutomaticWorkflow", "Step 2: Sending color '$detectedColor' to API...")
+                                sendColorCommandAutomatic(detectedColor) { colorSuccess ->
+                                    if (colorSuccess) {
+                                        // Start move detection
+                                        handler.postDelayed({
+                                            addLog("startAutomaticWorkflow", "Step 3: Starting move detection...")
+                                            updateStatus("✅ Auto-playing as $detectedColor")
+                                            startDetection()
+                                            addLog("startAutomaticWorkflow", "=== AUTOMATIC WORKFLOW COMPLETE ===")
+                                        }, 500)
+                                    } else {
+                                        updateStatus("⚠️ Color setup failed")
+                                    }
+                                }
+                            }, 500)
+                        } else {
+                            updateStatus("⚠️ Game start failed")
+                        }
+                    }
+                }, 1000)
+            }
             return
         }
         
@@ -735,6 +781,7 @@ class MoveDetectionOverlayService : Service() {
         val stopButton = overlayView.findViewById<Button>(R.id.stopButton)
         val updateApiButton = overlayView.findViewById<Button>(R.id.updateApiButton)
         val manualSetupButton = overlayView.findViewById<Button>(R.id.manualSetupButton)
+        val copyLogsButton = overlayView.findViewById<Button>(R.id.copyLogsButton)
         val minimizeButton = overlayView.findViewById<Button>(R.id.minimizeButton)
         val autoPlayCheckbox = overlayView.findViewById<CheckBox>(R.id.autoPlayCheckbox)
         statusTextView = overlayView.findViewById(R.id.statusTextView)
@@ -762,6 +809,11 @@ class MoveDetectionOverlayService : Service() {
         manualSetupButton.setOnClickListener {
             addLog("UI", "📐 Manual Setup button clicked")
             startManualBoardSetup()
+        }
+        
+        copyLogsButton.setOnClickListener {
+            addLog("UI", "📋 Copy Logs button clicked")
+            copyLogsToClipboard()
         }
         
         minimizeButton.setOnClickListener {
@@ -1325,6 +1377,23 @@ private fun cancelManualSetup() {
     
     updateStatus("✗ Setup Cancelled")
     Toast.makeText(this, "Manual setup cancelled", Toast.LENGTH_SHORT).show()
+}
+
+/**
+ * Copy all logs to clipboard
+ */
+private fun copyLogsToClipboard() {
+    try {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Chess Chat Logs", logBuffer.toString())
+        clipboard.setPrimaryClip(clip)
+        
+        addLog("copyLogsToClipboard", "✓ Logs copied to clipboard (${logBuffer.length} chars)")
+        Toast.makeText(this, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        addLog("copyLogsToClipboard", "ERROR: ${e.message}")
+        Toast.makeText(this, "Failed to copy logs: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
 }
 
     private fun captureScreen() {

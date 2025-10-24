@@ -1530,41 +1530,75 @@ private fun copyLogsToClipboard() {
     }
 
     private fun executeMoveAutomatically(move: String) {
-        addLog("executeMoveAutomatically", "CALLED - Move: $move")
+        addLog("executeMoveAutomatically", "╔═══════════════════════════════════════════════════╗")
+        addLog("executeMoveAutomatically", "║         AUTOMATIC MOVE EXECUTION STARTED          ║")
+        addLog("executeMoveAutomatically", "╠═══════════════════════════════════════════════════╣")
+        addLog("executeMoveAutomatically", "Move (UCI notation): $move")
         
         if (move.length < 4) {
             addLog("executeMoveAutomatically", "FAILED - Invalid format (length=${move.length})")
+            addLog("executeMoveAutomatically", "╚═══════════════════════════════════════════════════╝")
             updateStatus("⚠️ Invalid move")
             return
         }
 
         val fromSquare = move.substring(0, 2)
         val toSquare = move.substring(2, 4)
+        val orientation = if (isFlipped) "BLACK" else "WHITE"
 
-        addLog("executeMoveAutomatically", "From: $fromSquare, To: $toSquare")
-        addLog("executeMoveAutomatically", "Board: X=$boardX Y=$boardY Size=$boardSize Flipped=$isFlipped")
+        addLog("executeMoveAutomatically", "─────────────────────────────────────────────────────")
+        addLog("executeMoveAutomatically", "MOVE BREAKDOWN:")
+        addLog("executeMoveAutomatically", "  • From Square: $fromSquare")
+        addLog("executeMoveAutomatically", "  • To Square: $toSquare")
+        addLog("executeMoveAutomatically", "  • Orientation: $orientation pieces on bottom")
+        addLog("executeMoveAutomatically", "─────────────────────────────────────────────────────")
+        addLog("executeMoveAutomatically", "BOARD CONFIGURATION:")
+        addLog("executeMoveAutomatically", "  • Board X: $boardX pixels (left edge)")
+        addLog("executeMoveAutomatically", "  • Board Y: $boardY pixels (top edge)")
+        addLog("executeMoveAutomatically", "  • Board Size: $boardSize pixels (width × height)")
+        addLog("executeMoveAutomatically", "  • Square Size: ${boardSize / 8} pixels")
+        addLog("executeMoveAutomatically", "  • Flipped: $isFlipped")
+        addLog("executeMoveAutomatically", "─────────────────────────────────────────────────────")
 
+        // Calculate coordinates with comprehensive logging (getSquareCoordinates logs internally)
+        addLog("executeMoveAutomatically", "CALCULATING PIXEL COORDINATES:")
+        addLog("executeMoveAutomatically", "")
+        addLog("executeMoveAutomatically", "FROM SQUARE ($fromSquare):")
         val fromCoords = touchSimulator.getSquareCoordinates(fromSquare, boardX, boardY, boardSize, isFlipped)
+        
+        addLog("executeMoveAutomatically", "")
+        addLog("executeMoveAutomatically", "TO SQUARE ($toSquare):")
         val toCoords = touchSimulator.getSquareCoordinates(toSquare, boardX, boardY, boardSize, isFlipped)
 
-        addLog("executeMoveAutomatically", "From coords: (${fromCoords.first}, ${fromCoords.second})")
-        addLog("executeMoveAutomatically", "To coords: (${toCoords.first}, ${toCoords.second})")
+        addLog("executeMoveAutomatically", "")
+        addLog("executeMoveAutomatically", "─────────────────────────────────────────────────────")
+        addLog("executeMoveAutomatically", "PIXEL TAP PLAN:")
+        addLog("executeMoveAutomatically", "  • First Tap:  Pixel (${fromCoords.first.toInt()}, ${fromCoords.second.toInt()}) ← $fromSquare")
+        addLog("executeMoveAutomatically", "  • Second Tap: Pixel (${toCoords.first.toInt()}, ${toCoords.second.toInt()}) ← $toSquare")
+        addLog("executeMoveAutomatically", "  • Method: TAP-TAP (300ms press duration each)")
+        addLog("executeMoveAutomatically", "  • Delay: 600ms between taps")
+        addLog("executeMoveAutomatically", "─────────────────────────────────────────────────────")
 
         updateStatus("🤖 Playing: $move")
 
         // Check if accessibility service is enabled using proper Android API
         if (!isAccessibilityServiceEnabled()) {
-            addLog("executeMoveAutomatically", "FAILED - Accessibility service NOT enabled!")
-            addLog("executeMoveAutomatically", "Go to Settings > Accessibility > Chess Automation")
+            addLog("executeMoveAutomatically", "⚠️ FAILED - Accessibility service NOT enabled!")
+            addLog("executeMoveAutomatically", "→ Go to Settings > Accessibility > Chess Automation")
+            addLog("executeMoveAutomatically", "╚═══════════════════════════════════════════════════╝")
             updateStatus("⚠️ Enable accessibility")
             Toast.makeText(this, "Enable accessibility service first!", Toast.LENGTH_LONG).show()
             return
         }
 
-        addLog("executeMoveAutomatically", "Accessibility service OK - using TAP-TAP ONLY method")
-        
-        // TAP-TAP ONLY with IMPROVED timing for maximum reliability
-        addLog("executeMoveAutomatically", "Step 1: First tap at $fromSquare")
+        addLog("executeMoveAutomatically", "✓ Accessibility service is ENABLED")
+        addLog("executeMoveAutomatically", "")
+        addLog("executeMoveAutomatically", "═══════════════════════════════════════════════════")
+        addLog("executeMoveAutomatically", "EXECUTING MOVE: $fromSquare → $toSquare")
+        addLog("executeMoveAutomatically", "═══════════════════════════════════════════════════")
+        addLog("executeMoveAutomatically", "")
+        addLog("executeMoveAutomatically", "▶ STEP 1: First tap at $fromSquare")
+        addLog("executeMoveAutomatically", "  Tapping pixel (${fromCoords.first.toInt()}, ${fromCoords.second.toInt()}) for 300ms...")
         
         // First tap: longer 300ms press for better detection
         val firstTapSuccess = touchSimulator.simulateTouch(
@@ -1572,18 +1606,26 @@ private fun copyLogsToClipboard() {
         )
         
         if (!firstTapSuccess) {
-            addLog("executeMoveAutomatically", "FAILED - First tap failed at $fromSquare")
+            addLog("executeMoveAutomatically", "✗ STEP 1 FAILED - First tap unsuccessful")
+            addLog("executeMoveAutomatically", "  Square: $fromSquare")
+            addLog("executeMoveAutomatically", "  Pixel: (${fromCoords.first.toInt()}, ${fromCoords.second.toInt()})")
+            addLog("executeMoveAutomatically", "╚═══════════════════════════════════════════════════╝")
             updateStatus("⚠️ First tap failed")
             Toast.makeText(this, "First tap failed - check accessibility service", Toast.LENGTH_LONG).show()
             return
         }
         
-        addLog("executeMoveAutomatically", "✓ First tap SUCCESS at $fromSquare")
+        addLog("executeMoveAutomatically", "✓ STEP 1 SUCCESS - First tap completed")
+        addLog("executeMoveAutomatically", "  Tapped: $fromSquare at pixel (${fromCoords.first.toInt()}, ${fromCoords.second.toInt()})")
+        addLog("executeMoveAutomatically", "")
+        addLog("executeMoveAutomatically", "⏱ Waiting 600ms for piece selection...")
         
         // LONGER delay between taps (600ms) to ensure chess app registers the selection
         // This gives the chess app UI time to show the piece is selected
         handler.postDelayed({
-            addLog("executeMoveAutomatically", "Step 2: Second tap at $toSquare")
+            addLog("executeMoveAutomatically", "")
+            addLog("executeMoveAutomatically", "▶ STEP 2: Second tap at $toSquare")
+            addLog("executeMoveAutomatically", "  Tapping pixel (${toCoords.first.toInt()}, ${toCoords.second.toInt()}) for 300ms...")
             
             // Second tap: longer 300ms press for better detection
             val secondTapSuccess = touchSimulator.simulateTouch(
@@ -1591,8 +1633,17 @@ private fun copyLogsToClipboard() {
             )
             
             if (secondTapSuccess) {
-                addLog("executeMoveAutomatically", "✓ Second tap SUCCESS at $toSquare")
-                addLog("executeMoveAutomatically", "SUCCESS - Move executed: $move")
+                addLog("executeMoveAutomatically", "✓ STEP 2 SUCCESS - Second tap completed")
+                addLog("executeMoveAutomatically", "  Tapped: $toSquare at pixel (${toCoords.first.toInt()}, ${toCoords.second.toInt()})")
+                addLog("executeMoveAutomatically", "")
+                addLog("executeMoveAutomatically", "═══════════════════════════════════════════════════")
+                addLog("executeMoveAutomatically", "✓✓✓ MOVE EXECUTION COMPLETE ✓✓✓")
+                addLog("executeMoveAutomatically", "Move: $fromSquare → $toSquare ($move)")
+                addLog("executeMoveAutomatically", "Pixels tapped:")
+                addLog("executeMoveAutomatically", "  1st: (${fromCoords.first.toInt()}, ${fromCoords.second.toInt()})")
+                addLog("executeMoveAutomatically", "  2nd: (${toCoords.first.toInt()}, ${toCoords.second.toInt()})")
+                addLog("executeMoveAutomatically", "═══════════════════════════════════════════════════")
+                addLog("executeMoveAutomatically", "╚═══════════════════════════════════════════════════╝")
                 updateStatus("✅ Played: $move")
                 
                 // Wait for move animation to complete before resuming detection
@@ -1601,12 +1652,16 @@ private fun copyLogsToClipboard() {
                     resumeDetectionImmediately()
                 }, 400)
             } else {
-                addLog("executeMoveAutomatically", "FAILED - Second tap failed at $toSquare")
+                addLog("executeMoveAutomatically", "✗ STEP 2 FAILED - Second tap unsuccessful")
+                addLog("executeMoveAutomatically", "  Square: $toSquare")
+                addLog("executeMoveAutomatically", "  Pixel: (${toCoords.first.toInt()}, ${toCoords.second.toInt()})")
+                addLog("executeMoveAutomatically", "")
                 addLog("executeMoveAutomatically", "Possible causes:")
                 addLog("executeMoveAutomatically", "  1. Accessibility service disconnected")
                 addLog("executeMoveAutomatically", "  2. Gesture queue full")
                 addLog("executeMoveAutomatically", "  3. Invalid coordinates")
                 addLog("executeMoveAutomatically", "  4. Chess app not responding")
+                addLog("executeMoveAutomatically", "╚═══════════════════════════════════════════════════╝")
                 updateStatus("⚠️ Second tap failed")
                 Toast.makeText(this, "Second tap failed - check accessibility service", Toast.LENGTH_LONG).show()
             }

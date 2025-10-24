@@ -543,20 +543,25 @@ class ChessBoardDetector {
                     if (diffMean > maxDiffMean) maxDiffMean = diffMean
                     if (abs(stdDiff) > maxStdDiff) maxStdDiff = abs(stdDiff)
                     
-                    // IMPROVED: Lowered thresholds for better detection
-                    if (diffMean > 5.0) {  // Lowered from 10.0 to 5.0
+                    // MUCH IMPROVED: Significantly lowered thresholds for better detection
+                    if (diffMean > 1.5) {  // VERY SENSITIVE: Lowered from 5.0 to 1.5
                         changesDetected++
-                        if (stdDiff < -4.0) {  // Lowered from -8.0 to -4.0
+                        if (stdDiff < -2.0) {  // VERY SENSITIVE: Lowered from -4.0 to -2.0
                             // Piece removed (texture decreased)
                             removedSquares.add(Pair(row, col))
                             Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: piece removed (diffMean=${"%.2f".format(diffMean)}, stdDiff=${"%.2f".format(stdDiff)})")
-                        } else if (stdDiff > 4.0) {  // Lowered from 8.0 to 4.0
+                        } else if (stdDiff > 2.0) {  // VERY SENSITIVE: Lowered from 4.0 to 2.0
                             // Piece added (texture increased)
                             addedSquares.add(Pair(row, col))
                             Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: piece added (diffMean=${"%.2f".format(diffMean)}, stdDiff=${"%.2f".format(stdDiff)})")
                         } else {
                             // Change detected but not classified
                             Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: change detected but inconclusive (diffMean=${"%.2f".format(diffMean)}, stdDiff=${"%.2f".format(stdDiff)})")
+                        }
+                    } else {
+                        // Log ALL squares to help diagnose detection issues
+                        if (diffMean > 0.5) {
+                            Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: minor change (diffMean=${"%.2f".format(diffMean)}, stdDiff=${"%.2f".format(stdDiff)})")
                         }
                     }
                     
@@ -571,9 +576,15 @@ class ChessBoardDetector {
                 }
             }
             
-            Log.d(TAG, "Detection summary: ${changesDetected} squares with changes (threshold: diffMean>5.0)")
-            Log.d(TAG, "  Max diffMean: ${"%.2f".format(maxDiffMean)}, Max stdDiff: ${"%.2f".format(maxStdDiff)}")
-            Log.d(TAG, "  Removed: ${removedSquares.size} squares, Added: ${addedSquares.size} squares")
+            Log.d(TAG, "═══════════════════════════════════════════════════════════")
+            Log.d(TAG, "DETECTION SUMMARY:")
+            Log.d(TAG, "  Threshold: diffMean > 1.5 (VERY SENSITIVE)")
+            Log.d(TAG, "  Changes detected: $changesDetected squares")
+            Log.d(TAG, "  Max diffMean across all squares: ${"%.2f".format(maxDiffMean)}")
+            Log.d(TAG, "  Max stdDiff across all squares: ${"%.2f".format(maxStdDiff)}")
+            Log.d(TAG, "  Pieces removed: ${removedSquares.size} squares")
+            Log.d(TAG, "  Pieces added: ${addedSquares.size} squares")
+            Log.d(TAG, "═══════════════════════════════════════════════════════════")
             
             // Match removed squares with added squares to form moves
             val moves = mutableListOf<String>()

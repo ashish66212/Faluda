@@ -177,8 +177,9 @@ class MoveDetectionOverlayService : Service() {
         boardY = prefs.getInt("board_y", 300)
         boardSize = prefs.getInt("board_size", 800)
         isFlipped = prefs.getBoolean("board_flipped", false)
+        boardAutoDetected = prefs.getBoolean("board_auto_detected", false)
         addLog("loadSettings", "Server: $ngrokUrl")
-        addLog("loadSettings", "Board: X=$boardX Y=$boardY Size=$boardSize Flipped=$isFlipped")
+        addLog("loadSettings", "Board: X=$boardX Y=$boardY Size=$boardSize Flipped=$isFlipped ManualSetup=$boardAutoDetected")
     }
 
     private fun saveSettings() {
@@ -189,8 +190,9 @@ class MoveDetectionOverlayService : Service() {
             .putInt("board_y", boardY)
             .putInt("board_size", boardSize)
             .putBoolean("board_flipped", isFlipped)
+            .putBoolean("board_auto_detected", boardAutoDetected)
             .apply()
-        addLog("saveSettings", "Settings saved (API: $ngrokUrl)")
+        addLog("saveSettings", "Settings saved (API: $ngrokUrl, ManualSetup=$boardAutoDetected)")
     }
 
     private fun detectCurrentApp() {

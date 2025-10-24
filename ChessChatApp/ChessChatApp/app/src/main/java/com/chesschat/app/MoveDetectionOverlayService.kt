@@ -271,12 +271,12 @@ class MoveDetectionOverlayService : Service() {
     }
     
     /**
-     * AUTOMATIC WORKFLOW: Single button does everything
-     * 1. Uses manual setup (board position AND color) if configured, otherwise auto-detects
+     * AUTOMATIC WORKFLOW: Uses manual board setup and color
+     * 1. Uses YOUR manual setup (board position AND color)
      * 2. Shows visual feedback (red border)
      * 3. Sends game start to API
-     * 4. Sends your selected color to API
-     * 5. Starts move detection automatically
+     * 4. Sends YOUR selected color to API
+     * 5. Starts automatic move detection using OpenCV
      */
     private fun startAutomaticWorkflow() {
         addLog("startAutomaticWorkflow", "=== STARTING AUTOMATIC WORKFLOW ===")
@@ -295,151 +295,55 @@ class MoveDetectionOverlayService : Service() {
             return
         }
         
-        // Check if manual setup was already done
-        if (boardAutoDetected && boardX > 0 && boardY > 0 && boardSize > 0) {
-            addLog("startAutomaticWorkflow", "✓ Using MANUAL SETUP configuration")
-            addLog("startAutomaticWorkflow", "  Position: X=$boardX, Y=$boardY, Size=$boardSize")
-            
-            val manualColor = if (isFlipped) "black" else "white"
-            playerColor = manualColor
-            
-            addLog("startAutomaticWorkflow", "  Your color: $manualColor (${if (isFlipped) "Black" else "White"} at bottom)")
-            
-            handler.post {
-                // Show visual red border feedback
-                showBoardDetectionBorder()
-                
-                // Start game via API (after 1 second)
-                handler.postDelayed({
-                    addLog("startAutomaticWorkflow", "Step 1: Starting game via API...")
-                    sendStartCommandAutomatic { success ->
-                        if (success) {
-                            // Send your manual color selection to API
-                            handler.postDelayed({
-                                addLog("startAutomaticWorkflow", "Step 2: Setting your color '$manualColor' on server...")
-                                sendColorCommandAutomatic(manualColor) { colorSuccess ->
-                                    if (colorSuccess) {
-                                        // Start move detection
-                                        handler.postDelayed({
-                                            addLog("startAutomaticWorkflow", "Step 3: Starting move detection...")
-                                            updateStatus("✅ Auto-playing as $manualColor")
-                                            startDetection()
-                                            addLog("startAutomaticWorkflow", "=== AUTOMATIC WORKFLOW COMPLETE ===")
-                                        }, 500)
-                                    } else {
-                                        updateStatus("⚠️ Color setup failed")
-                                    }
-                                }
-                            }, 500)
-                        } else {
-                            updateStatus("⚠️ Game start failed")
-                        }
-                    }
-                }, 1000)
-            }
+        // Require manual setup first
+        if (!boardAutoDetected || boardX <= 0 || boardY <= 0 || boardSize <= 0) {
+            updateStatus("⚠️ Setup required")
+            addLog("startAutomaticWorkflow", "FAILED - Manual setup not done!")
+            addLog("startAutomaticWorkflow", "Please click 'Manual Setup' button first")
+            Toast.makeText(this, "Please do Manual Setup first:\n1. Click 'Manual Setup...'\n2. Drag corners to match board\n3. Click DONE\n4. Select your color", Toast.LENGTH_LONG).show()
             return
         }
         
-        updateStatus("🔍 Auto-detecting board...")
-        addLog("startAutomaticWorkflow", "Step 1: Capturing screen for board detection")
+        addLog("startAutomaticWorkflow", "✓ Using MANUAL SETUP configuration")
+        addLog("startAutomaticWorkflow", "  Position: X=$boardX, Y=$boardY, Size=$boardSize")
         
-        // Capture screen to detect board automatically
-        Thread {
-            try {
-                // Capture and detect board
-                val image = imageReader?.acquireLatestImage()
-                if (image == null) {
-                    addLog("startAutomaticWorkflow", "FAILED - No image available")
-                    handler.post {
-                        updateStatus("⚠️ No image")
-                    }
-                    return@Thread
-                }
-                
-                val planes = image.planes
-                val buffer = planes[0].buffer
-                val pixelStride = planes[0].pixelStride
-                val rowStride = planes[0].rowStride
-                val rowPadding = rowStride - pixelStride * image.width
-                
-                val fullBitmap = bitmapPool.obtain(
-                    image.width + rowPadding / pixelStride,
-                    image.height,
-                    Bitmap.Config.ARGB_8888
-                )
-                fullBitmap.copyPixelsFromBuffer(buffer)
-                image.close()
-                
-                // Detect board automatically
-                addLog("startAutomaticWorkflow", "Step 2: Running automatic board detection...")
-                val detectedConfig = boardDetector.detectBoardAutomatically(fullBitmap)
-                
-                if (detectedConfig != null) {
-                    boardX = detectedConfig.x
-                    boardY = detectedConfig.y
-                    boardSize = detectedConfig.size
-                    isFlipped = !detectedConfig.isWhiteBottom
-                    boardAutoDetected = true
-                    
-                    val detectedColor = if (detectedConfig.isWhiteBottom) "white" else "black"
-                    playerColor = detectedColor
-                    
-                    saveSettings()
-                    
-                    addLog("startAutomaticWorkflow", "✓ Board detected!")
-                    addLog("startAutomaticWorkflow", "  Position: X=$boardX, Y=$boardY, Size=$boardSize")
-                    addLog("startAutomaticWorkflow", "  Detected color: $detectedColor (${if (detectedConfig.isWhiteBottom) "White bottom" else "Black bottom"})")
-                    
-                    handler.post {
-                        // Step 3: Show visual red border feedback
-                        showBoardDetectionBorder()
-                        
-                        // Step 4: Start game via API (after 1 second)
+        val manualColor = if (isFlipped) "black" else "white"
+        playerColor = manualColor
+        
+        addLog("startAutomaticWorkflow", "  Your color: $manualColor (${if (isFlipped) "Black" else "White"} at bottom)")
+        
+        handler.post {
+            // Show visual red border feedback
+            showBoardDetectionBorder()
+            
+            // Start game via API (after 1 second)
+            handler.postDelayed({
+                addLog("startAutomaticWorkflow", "Step 1: Starting game via API...")
+                sendStartCommandAutomatic { success ->
+                    if (success) {
+                        // Send your manual color selection to API
                         handler.postDelayed({
-                            addLog("startAutomaticWorkflow", "Step 3: Starting game via API...")
-                            sendStartCommandAutomatic { success ->
-                                if (success) {
-                                    // Step 5: Send detected color to API
+                            addLog("startAutomaticWorkflow", "Step 2: Setting your color '$manualColor' on server...")
+                            sendColorCommandAutomatic(manualColor) { colorSuccess ->
+                                if (colorSuccess) {
+                                    // Start move detection
                                     handler.postDelayed({
-                                        addLog("startAutomaticWorkflow", "Step 4: Sending color '$detectedColor' to API...")
-                                        sendColorCommandAutomatic(detectedColor) { colorSuccess ->
-                                            if (colorSuccess) {
-                                                // Step 6: Start move detection
-                                                handler.postDelayed({
-                                                    addLog("startAutomaticWorkflow", "Step 5: Starting move detection...")
-                                                    updateStatus("✅ Auto-playing as $detectedColor")
-                                                    startDetection()
-                                                    addLog("startAutomaticWorkflow", "=== AUTOMATIC WORKFLOW COMPLETE ===")
-                                                }, 500)
-                                            } else {
-                                                updateStatus("⚠️ Color setup failed")
-                                            }
-                                        }
+                                        addLog("startAutomaticWorkflow", "Step 3: Starting automatic move detection with OpenCV...")
+                                        updateStatus("✅ Auto-playing as $manualColor")
+                                        startDetection()
+                                        addLog("startAutomaticWorkflow", "=== AUTOMATIC WORKFLOW COMPLETE ===")
                                     }, 500)
                                 } else {
-                                    updateStatus("⚠️ Game start failed")
+                                    updateStatus("⚠️ Color setup failed")
                                 }
                             }
-                        }, 1000)
-                    }
-                } else {
-                    addLog("startAutomaticWorkflow", "⚠ Auto-detection failed")
-                    handler.post {
-                        updateStatus("⚠️ Detection failed")
-                        Toast.makeText(this, "Board detection failed. Using defaults.", Toast.LENGTH_LONG).show()
+                        }, 500)
+                    } else {
+                        updateStatus("⚠️ Game start failed")
                     }
                 }
-                
-                bitmapPool.recycle(fullBitmap)
-                
-            } catch (e: Exception) {
-                addLog("startAutomaticWorkflow", "ERROR - ${e.message}")
-                e.printStackTrace()
-                handler.post {
-                    updateStatus("⚠️ Error")
-                }
-            }
-        }.start()
+            }, 1000)
+        }
     }
     
     /**

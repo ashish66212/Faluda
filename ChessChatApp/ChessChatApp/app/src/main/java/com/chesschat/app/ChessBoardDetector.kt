@@ -137,20 +137,79 @@ class ChessBoardDetector {
     }
     
     /**
-     * Fallback board detection using center region
+     * IMPROVED Fallback board detection using intelligent region analysis
+     * Analyzes the screen to find the chessboard based on color patterns
      */
     private fun detectBoardFallback(fullScreenBitmap: Bitmap): BoardConfig {
         val width = fullScreenBitmap.width
         val height = fullScreenBitmap.height
         
-        val boardX = (width * 0.01).toInt()
-        val boardY = (height * 0.2).toInt()
-        val boardSize = Math.min(width - 2 * boardX, (height * 0.5).toInt())
+        Log.d(TAG, "Running improved fallback detection on ${width}x${height} image")
         
-        Log.d(TAG, "Fallback detection: X=$boardX, Y=$boardY, Size=$boardSize")
-        
-        val isWhiteBottom = detectOrientation(fullScreenBitmap, boardX, boardY, boardSize)
-        return BoardConfig(boardX, boardY, boardSize, isWhiteBottom)
+        try {
+            val mat = bitmapToMat(fullScreenBitmap)
+            val gray = Mat()
+            Imgproc.cvtColor(mat, gray, Imgproc.COLOR_RGBA2GRAY)
+            
+            val bestBoardX = (width * 0.014).toInt()
+            val bestBoardSize = (width * 0.972).toInt()
+            var bestBoardY = (height * 0.22).toInt()
+            var maxVariance = 0.0
+            
+            val searchStartY = (height * 0.15).toInt()
+            val searchEndY = (height * 0.35).toInt()
+            val searchStep = 10
+            
+            Log.d(TAG, "Searching for board between Y=$searchStartY and Y=$searchEndY")
+            
+            for (testY in searchStartY..searchEndY step searchStep) {
+                if (testY + bestBoardSize > height) {
+                    break
+                }
+                
+                try {
+                    val testRegion = Mat(gray, Rect(bestBoardX, testY, bestBoardSize, bestBoardSize))
+                    
+                    val mean = MatOfDouble()
+                    val stdDev = MatOfDouble()
+                    Core.meanStdDev(testRegion, mean, stdDev)
+                    val variance = stdDev.get(0, 0)[0]
+                    
+                    Log.d(TAG, "Y=$testY: variance=$variance")
+                    
+                    if (variance > maxVariance && variance > 15.0) {
+                        maxVariance = variance
+                        bestBoardY = testY
+                    }
+                    
+                    testRegion.release()
+                    mean.release()
+                    stdDev.release()
+                } catch (e: Exception) {
+                    Log.d(TAG, "Error testing Y=$testY: ${e.message}")
+                }
+            }
+            
+            gray.release()
+            mat.release()
+            
+            Log.d(TAG, "Best board position: X=$bestBoardX, Y=$bestBoardY, Size=$bestBoardSize (variance=$maxVariance)")
+            
+            val isWhiteBottom = detectOrientation(fullScreenBitmap, bestBoardX, bestBoardY, bestBoardSize)
+            return BoardConfig(bestBoardX, bestBoardY, bestBoardSize, isWhiteBottom)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Improved fallback failed, using simple fallback: ${e.message}")
+            
+            val boardX = (width * 0.014).toInt()
+            val boardY = (height * 0.22).toInt()
+            val boardSize = (width * 0.972).toInt()
+            
+            Log.d(TAG, "Simple fallback: X=$boardX, Y=$boardY, Size=$boardSize")
+            
+            val isWhiteBottom = detectOrientation(fullScreenBitmap, boardX, boardY, boardSize)
+            return BoardConfig(boardX, boardY, boardSize, isWhiteBottom)
+        }
     }
     
     /**

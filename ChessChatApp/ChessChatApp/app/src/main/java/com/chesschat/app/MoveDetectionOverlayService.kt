@@ -45,6 +45,12 @@ class MoveDetectionOverlayService : Service() {
     }
 
     // Game State
+
+    enum class ResizeMode {
+    NONE, MOVE, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT,
+    TOP, BOTTOM, LEFT, RIGHT
+    }
+
     private var gameStarted = false
     private var playerColor: String? = null
     
@@ -1146,10 +1152,6 @@ private fun makeManualSetupDraggable(view: View, layoutParams: WindowManager.Lay
     var initialTouchY = 0f
     var resizeMode = ResizeMode.NONE
     
-    enum class ResizeMode {
-        NONE, MOVE, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT,
-        TOP, BOTTOM, LEFT, RIGHT
-    }
     
     view.setOnTouchListener { _, event ->
         when (event.action) {

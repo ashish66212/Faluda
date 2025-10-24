@@ -492,15 +492,17 @@ class MoveDetectionOverlayService : Service() {
                         if (response.isSuccessful) {
                             addLog("sendColorCommandAutomatic", "✓ Color set to $color")
                             
-                            // If engine made first move (when user chose black), execute it
-                            if (color == "black" && isAutoPlayEnabled && responseBody.isNotEmpty()) {
-                                val movePattern = "[a-h][1-8][a-h][1-8][qrbn]?".toRegex()
-                                val engineMove = movePattern.find(responseBody)?.value
-                                if (engineMove != null) {
-                                    addLog("sendColorCommandAutomatic", "Engine moved first: $engineMove")
-                                    handler.post {
-                                        executeMoveAutomatically(engineMove)
-                                    }
+                            // Extract any move from the response (for both white and black)
+                            val movePattern = "[a-h][1-8][a-h][1-8][qrbn]?".toRegex()
+                            val engineMove = movePattern.find(responseBody)?.value
+                            
+                            // If engine made first move, execute it automatically
+                            // - When user chose "white": engine is WHITE and makes first move (e.g., "Engine is white. First move: e2e4")
+                            // - When user chose "black": engine is BLACK and makes first move (e.g., "e2e4")
+                            if (engineMove != null && isAutoPlayEnabled && responseBody.isNotEmpty()) {
+                                addLog("sendColorCommandAutomatic", "Engine made first move: $engineMove")
+                                handler.post {
+                                    executeMoveAutomatically(engineMove)
                                 }
                             }
                             
@@ -628,11 +630,15 @@ class MoveDetectionOverlayService : Service() {
                                 playerColor = color
                                 updateStatus("✅ Playing as $color")
                                 
-                                // If engine made first move (when user chose black), execute it
-                                if (color == "black" && isAutoPlayEnabled && responseBody.isNotEmpty()) {
-                                    addLog("sendColorCommand", "Engine moved first: $responseBody")
-                                    if (responseBody.matches("[a-h][1-8][a-h][1-8]".toRegex())) {
-                                        executeMoveAutomatically(responseBody)
+                                // If engine made first move, execute it automatically
+                                // - When user chose "white": engine is WHITE and makes first move (e.g., "Engine is white. First move: e2e4")
+                                // - When user chose "black": engine is BLACK and makes first move (e.g., "e2e4")
+                                if (isAutoPlayEnabled && responseBody.isNotEmpty()) {
+                                    val movePattern = "[a-h][1-8][a-h][1-8][qrbn]?".toRegex()
+                                    val engineMove = movePattern.find(responseBody)?.value
+                                    if (engineMove != null) {
+                                        addLog("sendColorCommand", "Engine made first move: $engineMove")
+                                        executeMoveAutomatically(engineMove)
                                     }
                                 }
                             }

@@ -295,10 +295,19 @@ class MoveDetectionOverlayService : Service() {
             return
         }
         
+        // Reload settings to ensure we have the latest manual setup values
+        loadSettings()
+        addLog("startAutomaticWorkflow", "Checking board setup status:")
+        addLog("startAutomaticWorkflow", "  boardAutoDetected = $boardAutoDetected")
+        addLog("startAutomaticWorkflow", "  boardX = $boardX")
+        addLog("startAutomaticWorkflow", "  boardY = $boardY")
+        addLog("startAutomaticWorkflow", "  boardSize = $boardSize")
+        
         // Require manual setup first
         if (!boardAutoDetected || boardX <= 0 || boardY <= 0 || boardSize <= 0) {
             updateStatus("⚠️ Setup required")
             addLog("startAutomaticWorkflow", "FAILED - Manual setup not done!")
+            addLog("startAutomaticWorkflow", "  Reason: boardAutoDetected=$boardAutoDetected, X=$boardX, Y=$boardY, Size=$boardSize")
             addLog("startAutomaticWorkflow", "Please click 'Manual Setup' button first")
             Toast.makeText(this, "Please do Manual Setup first:\n1. Click 'Manual Setup...'\n2. Drag corners to match board\n3. Click DONE\n4. Select your color", Toast.LENGTH_LONG).show()
             return
@@ -1278,15 +1287,22 @@ private fun confirmManualSetup(isWhiteBottom: Boolean) {
     isFlipped = !isWhiteBottom
     boardAutoDetected = true // Mark as configured
     
+    // Save settings TWICE to ensure persistence
     saveSettings()
+    handler.postDelayed({
+        saveSettings()
+        addLog("confirmManualSetup", "✓ Settings saved twice for reliability")
+    }, 100)
     
     val colorText = if (isWhiteBottom) "White" else "Black"
     addLog("confirmManualSetup", "✓ MANUAL SETUP COMPLETE")
     addLog("confirmManualSetup", "  Board: X=$boardX, Y=$boardY, Size=$boardSize")
     addLog("confirmManualSetup", "  Color: $colorText at bottom")
+    addLog("confirmManualSetup", "  isFlipped: $isFlipped")
+    addLog("confirmManualSetup", "  boardAutoDetected: $boardAutoDetected")
     
     updateStatus("✓ Manual Setup Done")
-    Toast.makeText(this, "Board configured! $colorText at bottom", Toast.LENGTH_LONG).show()
+    Toast.makeText(this, "Board configured! $colorText at bottom\nSetup saved successfully!", Toast.LENGTH_LONG).show()
     
     // Show preview border for 3 seconds
     showBoardDetectionBorder()

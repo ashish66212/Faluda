@@ -22,8 +22,9 @@ class TouchSimulator {
     /**
      * Simulate a touch at the specified coordinates
      * Requires ChessAccessibilityService to be enabled
+     * IMPROVED: Longer 300ms duration for maximum reliability
      */
-    fun simulateTouch(x: Float, y: Float): Boolean {
+    fun simulateTouch(x: Float, y: Float, durationMs: Long = 300): Boolean {
         val service = ChessAccessibilityService.getInstance()
         
         if (service == null) {
@@ -32,9 +33,9 @@ class TouchSimulator {
         }
         
         return try {
-            val success = service.performTouch(x, y, 100)
+            val success = service.performTouch(x, y, durationMs)
             if (success) {
-                Log.d(TAG, "Touch dispatched at ($x, $y)")
+                Log.d(TAG, "Touch dispatched at ($x, $y) for ${durationMs}ms")
             } else {
                 Log.w(TAG, "Failed to dispatch touch at ($x, $y)")
             }
@@ -48,8 +49,9 @@ class TouchSimulator {
     /**
      * Simulate a drag gesture from one point to another
      * Requires ChessAccessibilityService to be enabled
+     * IMPROVED: Longer duration for smoother, more reliable moves
      */
-    fun simulateDrag(fromX: Float, fromY: Float, toX: Float, toY: Float, durationMs: Long = 300): Boolean {
+    fun simulateDrag(fromX: Float, fromY: Float, toX: Float, toY: Float, durationMs: Long = 600): Boolean {
         val service = ChessAccessibilityService.getInstance()
         
         if (service == null) {
@@ -60,7 +62,7 @@ class TouchSimulator {
         return try {
             val success = service.performDrag(fromX, fromY, toX, toY, durationMs)
             if (success) {
-                Log.d(TAG, "Drag dispatched from ($fromX, $fromY) to ($toX, $toY)")
+                Log.d(TAG, "Drag dispatched from ($fromX, $fromY) to ($toX, $toY) over ${durationMs}ms")
             } else {
                 Log.w(TAG, "Failed to dispatch drag")
             }

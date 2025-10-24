@@ -503,6 +503,10 @@ class ChessBoardDetector {
             val removedSquares = mutableListOf<Pair<Int, Int>>()
             val addedSquares = mutableListOf<Pair<Int, Int>>()
             
+            var maxDiffMean = 0.0
+            var maxStdDiff = 0.0
+            var changesDetected = 0
+            
             // Analyze each square individually
             for (row in 0 until 8) {
                 for (col in 0 until 8) {
@@ -533,16 +537,24 @@ class ChessBoardDetector {
                     val currStd = currStdDev.get(0, 0)[0]
                     val stdDiff = currStd - prevStd
                     
-                    // Detect significant changes
-                    if (diffMean > 10.0) {  // Significant change threshold
-                        if (stdDiff < -8.0) {
+                    // Track maximum values for debugging
+                    if (diffMean > maxDiffMean) maxDiffMean = diffMean
+                    if (abs(stdDiff) > maxStdDiff) maxStdDiff = abs(stdDiff)
+                    
+                    // IMPROVED: Lowered thresholds for better detection
+                    if (diffMean > 5.0) {  // Lowered from 10.0 to 5.0
+                        changesDetected++
+                        if (stdDiff < -4.0) {  // Lowered from -8.0 to -4.0
                             // Piece removed (texture decreased)
                             removedSquares.add(Pair(row, col))
-                            Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: piece removed (stdDiff=$stdDiff)")
-                        } else if (stdDiff > 8.0) {
+                            Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: piece removed (diffMean=${"%.2f".format(diffMean)}, stdDiff=${"%.2f".format(stdDiff)})")
+                        } else if (stdDiff > 4.0) {  // Lowered from 8.0 to 4.0
                             // Piece added (texture increased)
                             addedSquares.add(Pair(row, col))
-                            Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: piece added (stdDiff=$stdDiff)")
+                            Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: piece added (diffMean=${"%.2f".format(diffMean)}, stdDiff=${"%.2f".format(stdDiff)})")
+                        } else {
+                            // Change detected but not classified
+                            Log.d(TAG, "Square ${squareToUCI(row, col, isFlipped)}: change detected but inconclusive (diffMean=${"%.2f".format(diffMean)}, stdDiff=${"%.2f".format(stdDiff)})")
                         }
                     }
                     
@@ -557,7 +569,9 @@ class ChessBoardDetector {
                 }
             }
             
-            Log.d(TAG, "Detected ${removedSquares.size} removed, ${addedSquares.size} added squares")
+            Log.d(TAG, "Detection summary: ${changesDetected} squares with changes (threshold: diffMean>5.0)")
+            Log.d(TAG, "  Max diffMean: ${"%.2f".format(maxDiffMean)}, Max stdDiff: ${"%.2f".format(maxStdDiff)}")
+            Log.d(TAG, "  Removed: ${removedSquares.size} squares, Added: ${addedSquares.size} squares")
             
             // Match removed squares with added squares to form moves
             val moves = mutableListOf<String>()

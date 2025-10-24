@@ -44,13 +44,13 @@ class MoveDetectionOverlayService : Service() {
         private const val CHANNEL_ID = "chess_move_detection"
     }
 
-    // Game State
-
     enum class ResizeMode {
     NONE, MOVE, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT,
     TOP, BOTTOM, LEFT, RIGHT
     }
 
+
+    // Game State
     private var gameStarted = false
     private var playerColor: String? = null
     
@@ -940,8 +940,10 @@ class MoveDetectionOverlayService : Service() {
             addLog("showUpdateApiDialog", "Dialog displayed")
         }
     }
+private var manualSetupOverlay: View? = null
 private var manualBoardX = 50
 private var manualBoardY = 300
+private var manualBoardSize = 600
 
 /**
  * Start manual board setup with draggable/resizable square
@@ -1149,7 +1151,6 @@ private fun makeManualSetupDraggable(view: View, layoutParams: WindowManager.Lay
     var initialTouchX = 0f
     var initialTouchY = 0f
     var resizeMode = ResizeMode.NONE
-    
     
     view.setOnTouchListener { _, event ->
         when (event.action) {

@@ -19,6 +19,14 @@ jobs:
       with:
         python-version: '3.11'
     
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: pip-cache-${{ runner.os }}-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          pip-cache-${{ runner.os }}-
+    
     - name: Install system dependencies
       run: |
         sudo apt-get update
@@ -26,10 +34,36 @@ jobs:
     
     - name: Install Python dependencies
       run: |
-        pip install flask python-chess stockfish pyngrok
+        pip install flask python-chess stockfish pyngrok python-telegram-bot
     
-    - name: Run chess engine server
+    - name: Run chess engine server and send Telegram notification
       env:
         NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       run: |
-        python chess_engine.py
+        # Run chess engine in background and capture output
+        python chess_engine.py 2>&1 | tee chess_output.log &
+        
+        # Wait for ngrok URL to appear in logs (max 60 seconds)
+        echo "Waiting for ngrok tunnel..."
+        for i in {1..60}; do
+          if grep -q "https://.*\.ngrok" chess_output.log; then
+            echo "Ngrok tunnel found!"
+            break
+          fi
+          sleep 1
+        done
+        
+        # Extract ngrok URL
+        NGROK_URL=$(grep -oP 'https://[a-zA-Z0-9]+\.ngrok-free\.app' chess_output.log | head -1)
+        
+        if [ -n "$NGROK_URL" ]; then
+          echo "Ngrok URL: $NGROK_URL"
+          # Send Telegram notification
+          python send_telegram.py "$TELEGRAM_BOT_TOKEN" "$NGROK_URL"
+        else
+          echo "Warning: Could not extract ngrok URL"
+        fi
+        
+        # Keep the workflow running (follow the logs)
+        tail -f chess_output.log

@@ -161,24 +161,27 @@ class TouchSimulator {
         // Black (isFlipped=true): rank 1 at bottom → actualRank = rank (no inversion)
         val actualRank = if (isFlipped) rank else 7 - rank
         
-        val squareSize = boardSize / 8
-        val x = boardX + (actualFile * squareSize) + (squareSize / 2)
-        val y = boardY + (actualRank * squareSize) + (squareSize / 2)
+        // FIX: Use floating-point arithmetic to prevent cumulative rounding errors
+        // Integer division causes precision loss (e.g., 698/8 = 87 instead of 87.25)
+        // This leads to inaccurate touch coordinates, especially on right/bottom edges
+        val squareSize = boardSize.toFloat() / 8f
+        val x = boardX.toFloat() + (actualFile * squareSize) + (squareSize / 2f)
+        val y = boardY.toFloat() + (actualRank * squareSize) + (squareSize / 2f)
         
         // COMPREHENSIVE LOGGING
         val orientation = if (isFlipped) "BLACK" else "WHITE"
-        Log.d(TAG, "═══ UCI SQUARE MAPPING ═══")
+        Log.d(TAG, "═══ UCI SQUARE MAPPING (PRECISION FIX) ═══")
         Log.d(TAG, "UCI Square: $square")
         Log.d(TAG, "File: ${square[0]} (${file}) → Screen File: $actualFile (a-h always left-to-right)")
         Log.d(TAG, "Rank: ${square[1]} (${rank}) → Screen Rank: $actualRank")
         Log.d(TAG, "Board Orientation: $orientation on bottom")
         Log.d(TAG, "Board Area: X=$boardX, Y=$boardY, Size=$boardSize")
-        Log.d(TAG, "Square Size: $squareSize pixels")
+        Log.d(TAG, "Square Size: $squareSize pixels (float precision)")
         Log.d(TAG, "Grid Position: Column $actualFile, Row $actualRank (0-indexed)")
-        Log.d(TAG, "Pixel Coordinates: ($x, $y) [center of square]")
-        Log.d(TAG, "═══════════════════════════")
+        Log.d(TAG, "Pixel Coordinates: (${x}, ${y}) [precise center of square]")
+        Log.d(TAG, "═══════════════════════════════════════")
         
-        return Pair(x.toFloat(), y.toFloat())
+        return Pair(x, y)
     }
     
     /**
@@ -202,9 +205,10 @@ class TouchSimulator {
             return null
         }
         
-        val squareSize = boardSize / 8
-        val screenFile = (pixelX - boardX) / squareSize
-        val screenRank = (pixelY - boardY) / squareSize
+        // FIX: Use floating-point arithmetic for precise calculation
+        val squareSize = boardSize.toFloat() / 8f
+        val screenFile = ((pixelX - boardX).toFloat() / squareSize).toInt()
+        val screenRank = ((pixelY - boardY).toFloat() / squareSize).toInt()
         
         // Reverse orientation transformation
         // Files NEVER flip

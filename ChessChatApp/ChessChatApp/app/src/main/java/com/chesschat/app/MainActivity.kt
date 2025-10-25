@@ -145,12 +145,16 @@ class MainActivity : AppCompatActivity() {
     /**
      * LEGACY: Manual board configuration dialog
      * Kept for backward compatibility but replaced by automatic detection
+     * ENHANCED: Now shows UCI grid positions for easier manual configuration
      */
     private fun showBoardConfigDialog() {
-        val dialogView = layoutInflater.inflate(R.layout.board_config_dialog, null)
+        val dialogView = layoutInflater.inflate(R.layout.board_config_dialog_enhanced, null)
         val xInput = dialogView.findViewById<EditText>(R.id.boardXInput)
         val yInput = dialogView.findViewById<EditText>(R.id.boardYInput)
         val sizeInput = dialogView.findViewById<EditText>(R.id.boardSizeInput)
+        val uciGridDisplay = dialogView.findViewById<TextView>(R.id.uciGridDisplay)
+        val previewGridButton = dialogView.findViewById<Button>(R.id.previewGridButton)
+        val flipOrientationButton = dialogView.findViewById<Button>(R.id.flipOrientationButton)
 
         val savedX = sharedPreferences.getInt("board_x", 12)
         val savedY = sharedPreferences.getInt("board_y", 502)
@@ -160,9 +164,62 @@ class MainActivity : AppCompatActivity() {
         yInput.setText(savedY.toString())
         sizeInput.setText(savedSize.toString())
 
+        var isFlipped = false
+
+        // Function to generate UCI grid display
+        fun updateUCIGrid() {
+            val x = xInput.text.toString().toIntOrNull() ?: savedX
+            val y = yInput.text.toString().toIntOrNull() ?: savedY
+            val size = sizeInput.text.toString().toIntOrNull() ?: savedSize
+
+            if (size <= 0) {
+                uciGridDisplay.text = "Invalid board size"
+                return
+            }
+
+            val squareSize = size / 8
+            val gridText = StringBuilder()
+            
+            gridText.append("Board: X=$x, Y=$y, Size=$size (${squareSize}px/square)\n")
+            gridText.append("Orientation: ${if (isFlipped) "BLACK" else "WHITE"} on bottom\n\n")
+
+            // Generate 8x8 grid with UCI positions
+            for (rank in 7 downTo 0) {
+                for (file in 0..7) {
+                    val fileChar = ('a'.code + file).toChar()
+                    val rankChar = ('1'.code + rank).toChar()
+                    val uciSquare = "$fileChar$rankChar"
+                    
+                    // Calculate center coordinates for this square
+                    val actualRank = if (isFlipped) (7 - rank) else rank
+                    val centerX = x + (file * squareSize) + (squareSize / 2)
+                    val centerY = y + (actualRank * squareSize) + (squareSize / 2)
+                    
+                    gridText.append("$uciSquare:$centerX,$centerY ")
+                }
+                gridText.append("\n")
+            }
+
+            uciGridDisplay.text = gridText.toString()
+        }
+
+        // Preview button to update grid
+        previewGridButton.setOnClickListener {
+            updateUCIGrid()
+        }
+
+        // Flip orientation button
+        flipOrientationButton.setOnClickListener {
+            isFlipped = !isFlipped
+            flipOrientationButton.text = if (isFlipped) "Flip to White" else "Flip to Black"
+            updateUCIGrid()
+        }
+
+        // Show initial grid
+        updateUCIGrid()
+
         AlertDialog.Builder(this)
-            .setTitle("Configure Chessboard Area")
-            .setMessage("Your board coordinates:\nX: 12-710, Y: 502-1203\nSize: 698×701px\n\nAdjust if needed:")
+            .setTitle("Manual Board Configuration")
             .setView(dialogView)
             .setPositiveButton("Start Detection") { dialog, _ ->
                 val x = xInput.text.toString().toIntOrNull() ?: 12

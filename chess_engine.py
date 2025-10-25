@@ -144,14 +144,15 @@ def run_server():
             ngrok.set_auth_token(ngrok_token)
         time.sleep(1)
         public_url = ngrok.connect(port)
+        url_string = str(public_url.public_url) if hasattr(public_url, 'public_url') else str(public_url)
         print("\n" + "="*60)
         print("PUBLIC URL - ACCESS FROM ANYWHERE:")
         print("="*60)
-        print(f"\n{public_url}")
+        print(f"\n{url_string}")
         print("\nExample commands:")
-        print(f"  curl -X POST {public_url}/start")
-        print(f"  curl -X POST {public_url}/move -d \"white\"")
-        print(f"  curl -X POST {public_url}/move -d \"e2e4\"")
+        print(f"  curl -X POST {url_string}/start")
+        print(f"  curl -X POST {url_string}/move -d \"white\"")
+        print(f"  curl -X POST {url_string}/move -d \"e2e4\"")
         print("\n" + "="*60 + "\n")
         
         telegram_token = os.environ.get('TELEGRAM_BOT_TOKEN')
@@ -161,7 +162,7 @@ def run_server():
                 from telegram import Bot
                 async def send_notification():
                     bot = Bot(telegram_token)
-                    message = f"🎮 Chess Engine is Live!\n\nNgrok URL: {public_url}\n\nExample commands:\ncurl -X POST {public_url}/start\ncurl -X POST {public_url}/move -d \"white\"\ncurl -X POST {public_url}/move -d \"e2e4\""
+                    message = f"🎮 Chess Engine is Live!\n\nNgrok URL: {url_string}\n\nExample commands:\ncurl -X POST {url_string}/start\ncurl -X POST {url_string}/move -d \"white\"\ncurl -X POST {url_string}/move -d \"e2e4\""
                     await bot.send_message(chat_id=6173586090, text=message)
                     print("✓ Telegram notification sent!")
                 asyncio.run(send_notification())

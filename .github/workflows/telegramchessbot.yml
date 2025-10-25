@@ -24,9 +24,9 @@ jobs:
         path: |
           ~/.cache/pip
           /opt/hostedtoolcache/Python/3.9.23/x64/lib/python3.9/site-packages
-        key: pip-cache-${{ runner.os }}-${{ hashFiles('.github/workflows/telegramchessbot.yml') }}
+        key: ${{ runner.os }}-pip-packages-v1
         restore-keys: |
-          pip-cache-${{ runner.os }}-
+          ${{ runner.os }}-pip-packages-
         
     - name: Install Python dependencies
       run: |

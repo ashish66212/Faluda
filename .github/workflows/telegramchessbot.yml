@@ -35,14 +35,22 @@ jobs:
       id: cache-stockfish
       uses: actions/cache@v3
       with:
-        path: /usr/games/stockfish
-        key: ${{ runner.os }}-stockfish
+        path: ~/stockfish
+        key: ${{ runner.os }}-stockfish-binary-v1
         
     - name: Install Stockfish
       if: steps.cache-stockfish.outputs.cache-hit != 'true'
       run: |
-        sudo apt-get update
-        sudo apt-get install -y stockfish
+        mkdir -p ~/stockfish
+        wget -q https://github.com/official-stockfish/Stockfish/releases/download/sf_16/stockfish-ubuntu-x86-64-avx2.tar -O stockfish.tar
+        tar -xf stockfish.tar
+        mv stockfish/stockfish-ubuntu-x86-64-avx2 ~/stockfish/stockfish
+        chmod +x ~/stockfish/stockfish
+        rm -rf stockfish stockfish.tar
+        
+    - name: Setup Stockfish path
+      run: |
+        echo "$HOME/stockfish" >> $GITHUB_PATH
         
     - name: Create chess bot script
       run: |
@@ -64,7 +72,7 @@ jobs:
         # Config
         # -----------------------------
         TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-        STOCKFISH_PATH = "/usr/games/stockfish"
+        STOCKFISH_PATH = os.path.expanduser("~/stockfish/stockfish")
         ENGINE_TIME = 0.8
         ENGINE_MATE_DEPTH = 20
         ENGINE_FALLBACK_DEPTH = 15

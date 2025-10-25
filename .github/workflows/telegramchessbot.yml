@@ -17,15 +17,15 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
+      id: setup-python
         
-    - name: Cache Python packages
+    - name: Cache Python environment
       uses: actions/cache@v3
       with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-telegram-chess-v2
+        path: ${{ env.pythonLocation }}
+        key: ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-telegram-chess-v1
         restore-keys: |
-          ${{ runner.os }}-pip-telegram-chess-
-          ${{ runner.os }}-pip-
+          ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-
         
     - name: Install Python dependencies
       run: |

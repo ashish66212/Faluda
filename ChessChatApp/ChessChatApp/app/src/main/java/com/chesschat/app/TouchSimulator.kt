@@ -71,10 +71,10 @@ class TouchSimulator {
     /**
      * Simulate a touch at the specified coordinates
      * Requires ChessAccessibilityService to be enabled
-     * IMPROVED: Longer 300ms duration for maximum reliability
+     * IMPROVED: Longer 700ms duration for maximum reliability
      * LOGS: Detailed pixel and UCI square information
      */
-    fun simulateTouch(x: Float, y: Float, durationMs: Long = 300): Boolean {
+    fun simulateTouch(x: Float, y: Float, durationMs: Long = 700): Boolean {
         val service = ChessAccessibilityService.getInstance()
         
         if (service == null) {

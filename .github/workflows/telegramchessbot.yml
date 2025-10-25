@@ -69,7 +69,7 @@ jobs:
         # -----------------------------
         # Config
         # -----------------------------
-        TOKEN = "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+        TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
         STOCKFISH_PATH = "/usr/games/stockfish"
         ENGINE_TIME = 0.8
         ENGINE_MATE_DEPTH = 20
@@ -354,5 +354,7 @@ jobs:
         EOF
         
     - name: Run chess bot
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       run: |
         python chess_bot.py

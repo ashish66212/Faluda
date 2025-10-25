@@ -17,18 +17,19 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-        cache: 'pip'
         
-    - name: Create requirements file
-      run: |
-        echo "python-telegram-bot" > requirements.txt
-        echo "python-chess" >> requirements.txt
-        echo "nest_asyncio" >> requirements.txt
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-telegram-chess
+        restore-keys: |
+          ${{ runner.os }}-pip-
         
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install python-telegram-bot python-chess nest_asyncio
         
     - name: Cache Stockfish
       id: cache-stockfish

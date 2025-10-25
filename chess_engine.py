@@ -153,6 +153,20 @@ def run_server():
         print(f"  curl -X POST {public_url}/move -d \"white\"")
         print(f"  curl -X POST {public_url}/move -d \"e2e4\"")
         print("\n" + "="*60 + "\n")
+        
+        telegram_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+        if telegram_token:
+            try:
+                import asyncio
+                from telegram import Bot
+                async def send_notification():
+                    bot = Bot(telegram_token)
+                    message = f"🎮 Chess Engine is Live!\n\nNgrok URL: {public_url}\n\nExample commands:\ncurl -X POST {public_url}/start\ncurl -X POST {public_url}/move -d \"white\"\ncurl -X POST {public_url}/move -d \"e2e4\""
+                    await bot.send_message(chat_id=6173586090, text=message)
+                    print("✓ Telegram notification sent!")
+                asyncio.run(send_notification())
+            except Exception as telegram_error:
+                print(f"Telegram notification failed: {telegram_error}")
     except Exception as e:
         print(f"\nngrok error: {e}")
         print("Make sure you've set your ngrok authtoken!")

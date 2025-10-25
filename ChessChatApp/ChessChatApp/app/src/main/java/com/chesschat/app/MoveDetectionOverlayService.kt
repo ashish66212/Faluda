@@ -1591,7 +1591,7 @@ private fun copyLogsToClipboard() {
         addLog("executeMoveAutomatically", "PIXEL TAP PLAN:")
         addLog("executeMoveAutomatically", "  • First Tap:  Pixel (${fromCoords.first.toInt()}, ${fromCoords.second.toInt()}) ← $fromSquare")
         addLog("executeMoveAutomatically", "  • Second Tap: Pixel (${toCoords.first.toInt()}, ${toCoords.second.toInt()}) ← $toSquare")
-        addLog("executeMoveAutomatically", "  • Method: TAP-TAP (300ms press duration each)")
+        addLog("executeMoveAutomatically", "  • Method: TAP-TAP (700ms press duration each)")
         addLog("executeMoveAutomatically", "  • Delay: 600ms between taps")
         addLog("executeMoveAutomatically", "─────────────────────────────────────────────────────")
 
@@ -1614,11 +1614,11 @@ private fun copyLogsToClipboard() {
         addLog("executeMoveAutomatically", "═══════════════════════════════════════════════════")
         addLog("executeMoveAutomatically", "")
         addLog("executeMoveAutomatically", "▶ STEP 1: First tap at $fromSquare")
-        addLog("executeMoveAutomatically", "  Tapping pixel (${fromCoords.first.toInt()}, ${fromCoords.second.toInt()}) for 300ms...")
+        addLog("executeMoveAutomatically", "  Tapping pixel (${fromCoords.first.toInt()}, ${fromCoords.second.toInt()}) for 700ms...")
         
-        // First tap: longer 300ms press for better detection
+        // First tap: longer 700ms press for better detection
         val firstTapSuccess = touchSimulator.simulateTouch(
-            fromCoords.first, fromCoords.second, 300
+            fromCoords.first, fromCoords.second, 700
         )
         
         if (!firstTapSuccess) {
@@ -1641,11 +1641,11 @@ private fun copyLogsToClipboard() {
         handler.postDelayed({
             addLog("executeMoveAutomatically", "")
             addLog("executeMoveAutomatically", "▶ STEP 2: Second tap at $toSquare")
-            addLog("executeMoveAutomatically", "  Tapping pixel (${toCoords.first.toInt()}, ${toCoords.second.toInt()}) for 300ms...")
+            addLog("executeMoveAutomatically", "  Tapping pixel (${toCoords.first.toInt()}, ${toCoords.second.toInt()}) for 700ms...")
             
-            // Second tap: longer 300ms press for better detection
+            // Second tap: longer 700ms press for better detection
             val secondTapSuccess = touchSimulator.simulateTouch(
-                toCoords.first, toCoords.second, 300
+                toCoords.first, toCoords.second, 700
             )
             
             if (secondTapSuccess) {

@@ -18,17 +18,37 @@ jobs:
       with:
         python-version: '3.9'
         
+    - name: Cache Python packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          /usr/games/stockfish
+        key: ${{ runner.os }}-python-stockfish-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-python-stockfish-
+          
     - name: Install system dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y stockfish
+        if ! command -v stockfish &> /dev/null; then
+          sudo apt-get update
+          sudo apt-get install -y stockfish
+        else
+          echo "Stockfish found in cache, skipping installation"
+        fi
         
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install python-telegram-bot
-        pip install python-chess
-        pip install nest_asyncio
+        pip install python-telegram-bot python-chess nest_asyncio
         
     - name: Create chess bot script
       run: |
@@ -49,7 +69,7 @@ jobs:
         # -----------------------------
         # Config
         # -----------------------------
-        TOKEN = "8281360621:AAFzmckJWfXNU0tf3oGmLXGht1RcpRHXDto"
+        TOKEN = "${{ secrets.TELEGRAM_BOT_TOKEN }}"
         STOCKFISH_PATH = "/usr/games/stockfish"
         ENGINE_TIME = 0.8
         ENGINE_MATE_DEPTH = 20
@@ -323,17 +343,16 @@ jobs:
         # -----------------------------
         # Run bot
         # -----------------------------
-        app = ApplicationBuilder().token(TOKEN).build()
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("sync", sync))
-        app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_move))
+        if __name__ == "__main__":
+            app = ApplicationBuilder().token(TOKEN).build()
+            app.add_handler(CommandHandler("start", start))
+            app.add_handler(CommandHandler("sync", sync))
+            app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_move))
 
-        print("Bot is running...")
-        app.run_polling()
+            print("Bot is running...")
+            app.run_polling()
         EOF
         
     - name: Run chess bot
       run: |
         python chess_bot.py
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

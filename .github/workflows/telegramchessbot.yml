@@ -19,16 +19,15 @@ jobs:
         python-version: '3.9'
         
     - name: Cache pip
+      id: cache-pip
       uses: actions/cache@v3
       with:
         path: |
           ~/.cache/pip
           /opt/hostedtoolcache/Python/3.9.23/x64/lib/python3.9/site-packages
         key: ${{ runner.os }}-pip-packages-v1
-        restore-keys: |
-          ${{ runner.os }}-pip-packages-
-        
     - name: Install Python dependencies
+      if: steps.cache-pip.outputs.cache-hit != 'true'
       run: |
         python -m pip install --upgrade pip
         pip install python-telegram-bot python-chess nest_asyncio

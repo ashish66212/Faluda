@@ -22,8 +22,9 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}-telegram-chess-v1
+        key: ${{ runner.os }}-pip-telegram-chess-v2
         restore-keys: |
+          ${{ runner.os }}-pip-telegram-chess-
           ${{ runner.os }}-pip-
         
     - name: Install Python dependencies

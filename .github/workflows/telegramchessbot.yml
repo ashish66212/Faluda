@@ -17,15 +17,16 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
-      id: setup-python
         
-    - name: Cache Python environment
+    - name: Cache pip
       uses: actions/cache@v3
       with:
-        path: ${{ env.pythonLocation }}
-        key: ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-telegram-chess-v1
+        path: |
+          ~/.cache/pip
+          /opt/hostedtoolcache/Python/3.9.23/x64/lib/python3.9/site-packages
+        key: pip-cache-${{ runner.os }}-${{ hashFiles('.github/workflows/telegramchessbot.yml') }}
         restore-keys: |
-          ${{ runner.os }}-python-${{ steps.setup-python.outputs.python-version }}-
+          pip-cache-${{ runner.os }}-
         
     - name: Install Python dependencies
       run: |

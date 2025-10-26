@@ -52,6 +52,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'browser-automation/package.json'
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('browser-automation/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
 
       - name: Install dependencies
         working-directory: browser-automation
@@ -59,7 +70,13 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: browser-automation
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium --with-deps
+      
+      - name: Install Playwright system dependencies
+        working-directory: browser-automation
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       - name: Setup ngrok
         run: |
@@ -373,24 +390,57 @@ jobs:
             res.json({ logs: actionLog });
           });
 
+          app.post('/chat', async (req, res) => {
+            const userMessage = req.body.message || req.body.task;
+            
+            if (!userMessage) {
+              return res.json({ success: false, error: 'No message provided' });
+            }
+            
+            log(`💬 Chat message received: ${userMessage}`);
+            
+            try {
+              const command = await processTaskWithGemini(userMessage);
+              
+              if (!command) {
+                return res.json({ success: false, error: 'Could not understand the task' });
+              }
+              
+              if (command.action === 'complete') {
+                await takeScreenshot('chat-result.png');
+                return res.json({ 
+                  success: true, 
+                  action: 'complete',
+                  summary: command.summary,
+                  message: 'Task completed'
+                });
+              }
+              
+              const result = await executeBrowserAction(command);
+              res.json({ 
+                success: result.success, 
+                action: command.action,
+                result: result
+              });
+            } catch (error) {
+              log(`❌ Chat error: ${error.message}`, 'ERROR');
+              res.json({ success: false, error: error.message });
+            }
+          });
+
           const PORT = 3000;
           app.listen(PORT, async () => {
             log(`🌐 Server listening on port ${PORT}`);
-            log(`📋 Task: ${TASK_DESCRIPTION}`);
+            log(`🤖 Ready to receive Gemini chat commands via API`);
+            log(`📋 Initial task context: ${TASK_DESCRIPTION}`);
             
             await initBrowser();
             
-            setTimeout(async () => {
-              await runAutomatedTask();
-              
-              log('🎬 Closing browser and saving video...');
-              await context.close();
-              await browser.close();
-              
-              log('✅ All done! Check artifacts for screenshots and videos.');
-              
-              setTimeout(() => process.exit(0), 5000);
-            }, 10000);
+            log(`✅ Browser initialized and ready!`);
+            log(`💬 Server will stay active - send commands via /command endpoint`);
+            log(`📸 Use /screenshot to get current browser state`);
+            log(`📊 Use /status to check server health`);
+            log(`📜 Use /logs to view action history`);
           });
           CONTROLLER_EOF
 
@@ -429,26 +479,36 @@ jobs:
             echo "**Public URL**: \`$NGROK_URL\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "#### 🎮 Available Endpoints:" >> $GITHUB_STEP_SUMMARY
-            echo "- \`POST $NGROK_URL/command\` - Send browser command" >> $GITHUB_STEP_SUMMARY
+            echo "- \`POST $NGROK_URL/chat\` - 💬 **Chat with Gemini** (send task as text)" >> $GITHUB_STEP_SUMMARY
+            echo "- \`POST $NGROK_URL/command\` - Send browser command directly" >> $GITHUB_STEP_SUMMARY
             echo "- \`GET $NGROK_URL/status\` - Get current status" >> $GITHUB_STEP_SUMMARY
             echo "- \`GET $NGROK_URL/screenshot\` - Get current screenshot" >> $GITHUB_STEP_SUMMARY
             echo "- \`POST $NGROK_URL/confirm\` - Confirm pending action" >> $GITHUB_STEP_SUMMARY
             echo "- \`GET $NGROK_URL/logs\` - View action logs" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "#### 📝 Example Command:" >> $GITHUB_STEP_SUMMARY
+            echo "#### 💬 Chat with Gemini (Recommended):" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-            echo "curl -X POST $NGROK_URL/command \\" >> $GITHUB_STEP_SUMMARY
+            echo "curl -X POST $NGROK_URL/chat \\" >> $GITHUB_STEP_SUMMARY
             echo "  -H 'Content-Type: application/json' \\" >> $GITHUB_STEP_SUMMARY
-            echo "  -d '{\"action\": \"navigate\", \"url\": \"https://google.com\"}'" >> $GITHUB_STEP_SUMMARY
+            echo "  -d '{\"message\": \"Go to YouTube and search for cats\"}'" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⏱️ **Server will run for up to 6 hours** (GitHub Actions limit)" >> $GITHUB_STEP_SUMMARY
           fi
           
+          echo ""
+          echo "⏱️ Server is now running and will stay active for up to 6 hours..."
+          echo "💬 Use the ngrok URL above to send chat commands to Gemini"
+          echo "🛑 The workflow will continue until timeout or manual cancellation"
+          echo ""
+          
+          # Keep the process running - wait for the controller to exit or timeout
           wait $CONTROLLER_PID
           EXIT_CODE=$?
           
           kill $NGROK_PID 2>/dev/null || true
           
-          echo "✅ Automation completed with exit code: $EXIT_CODE"
+          echo "✅ Server stopped with exit code: $EXIT_CODE"
           exit $EXIT_CODE
 
       - name: Upload Screenshots

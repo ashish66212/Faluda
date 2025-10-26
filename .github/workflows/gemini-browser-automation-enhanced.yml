@@ -1,6 +1,6 @@
 name: Gemini Autonomous AI Browser Agent
 
-on:
+'on':
   workflow_dispatch:
     inputs:
       task_description:

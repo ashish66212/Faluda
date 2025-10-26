@@ -185,13 +185,13 @@ Be proactive, decisive, and thorough. Act as if you're a skilled human operator 
             const logMessage = `[${timestamp}] [${level}] ${message}`;
             console.log(logMessage);
             actionLog.push({ timestamp, level, message });
-            
+
             fs.appendFileSync('logs/automation.log', logMessage + '\n');
           }
 
           async function initBrowser() {
             log('🎭 Initializing stealth browser for autonomous operation...');
-            
+
             browser = await chromium.launch({
               headless: HEADLESS,
               args: [
@@ -223,22 +223,22 @@ Be proactive, decisive, and thorough. Act as if you're a skilled human operator 
             });
 
             page = await context.newPage();
-            
+
             page.on('console', msg => log(`Browser: ${msg.text()}`));
             page.on('pageerror', err => log(`Error: ${err.message}`, 'ERROR'));
             page.on('download', download => log(`Download: ${download.suggestedFilename()}`));
-            
+
             log('✅ Browser ready for autonomous operation');
             return page;
           }
 
           async function takeScreenshot(name = null) {
             if (!page) return null;
-            
+
             screenshotCounter++;
             const filename = name || `step-${currentStepIndex}-${screenshotCounter}-${Date.now()}.png`;
             const filepath = path.join('screenshots', filename);
-            
+
             await page.screenshot({ path: filepath, fullPage: false });
             log(`📸 Screenshot: ${filename}`);
             return filepath;
@@ -249,17 +249,17 @@ Be proactive, decisive, and thorough. Act as if you're a skilled human operator 
             const title = await page.title();
             const html = await page.content();
             const $ = cheerio.load(html);
-            
+
             $('script, style, noscript').remove();
             const visibleText = $('body').text().replace(/\s+/g, ' ').trim().substring(0, 5000);
-            
+
             const buttons = await page.$$eval('button, a.button, input[type="submit"]', 
               elements => elements.slice(0, 20).map(el => ({
                 text: el.textContent?.trim() || el.value,
                 selector: el.id ? `#${el.id}` : el.className ? `.${el.className.split(' ')[0]}` : el.tagName
               }))
             );
-            
+
             const inputs = await page.$$eval('input, textarea, select', 
               elements => elements.slice(0, 20).map(el => ({
                 type: el.type || 'text',
@@ -268,7 +268,7 @@ Be proactive, decisive, and thorough. Act as if you're a skilled human operator 
                 selector: el.id ? `#${el.id}` : el.name ? `[name="${el.name}"]` : el.tagName
               }))
             );
-            
+
             return {
               url,
               title,
@@ -283,7 +283,7 @@ Be proactive, decisive, and thorough. Act as if you're a skilled human operator 
 
           async function executeAction(action) {
             log(`⚡ Executing: ${action.type} - ${JSON.stringify(action.params)}`, 'ACTION');
-            
+
             try {
               switch (action.type) {
                 case 'goto':
@@ -319,7 +319,7 @@ Be proactive, decisive, and thorough. Act as if you're a skilled human operator 
                 default:
                   log(`Unknown action type: ${action.type}`, 'WARN');
               }
-              
+
               log(`✅ Action completed successfully`, 'SUCCESS');
               return { success: true };
             } catch (error) {
@@ -330,23 +330,23 @@ Be proactive, decisive, and thorough. Act as if you're a skilled human operator 
 
           async function askGemini(prompt, includePageContext = true) {
             let fullPrompt = SYSTEM_PROMPT + '\n\n' + prompt;
-            
+
             if (includePageContext && page) {
               const context = await getPageContext();
               fullPrompt += `\n\nCurrent Page Context:\n${JSON.stringify(context, null, 2)}`;
             }
-            
+
             log('🤖 Querying Gemini AI for decision...');
-            
+
             try {
               const result = await model.generateContent(fullPrompt);
               const response = result.response.text();
-              
+
               if (result.response.groundingMetadata) {
                 log('🔍 Web search used:', 'INFO');
                 log(JSON.stringify(result.response.groundingMetadata.webSearchQueries || []), 'INFO');
               }
-              
+
               log(`💬 Gemini response: ${response.substring(0, 200)}...`);
               return response;
             } catch (error) {
@@ -357,7 +357,7 @@ Be proactive, decisive, and thorough. Act as if you're a skilled human operator 
 
           async function createExecutionPlan(taskDescription) {
             log('📋 Creating autonomous execution plan...');
-            
+
             const planningPrompt = `Task: "${taskDescription}"
 
 Create a detailed, step-by-step execution plan to complete this task autonomously. 
@@ -388,7 +388,7 @@ Return your plan as a JSON array of steps:
 Be thorough and proactive. Plan for success.`;
 
             const response = await askGemini(planningPrompt, false);
-            
+
             try {
               const jsonMatch = response.match(/\[[\s\S]*\]/);
               if (jsonMatch) {
@@ -402,7 +402,7 @@ Be thorough and proactive. Plan for success.`;
             } catch (e) {
               log('⚠️ Could not parse plan as JSON, using text-based planning', 'WARN');
             }
-            
+
             planSteps = [{ step: 1, action: 'execute', description: 'Execute task autonomously' }];
             return planSteps;
           }
@@ -410,21 +410,21 @@ Be thorough and proactive. Plan for success.`;
           async function executeTask() {
             log('🚀 Starting autonomous task execution...', 'INFO');
             log(`Task: ${TASK_DESCRIPTION}`);
-            
+
             await initBrowser();
-            
+
             const plan = await createExecutionPlan(TASK_DESCRIPTION);
-            
+
             for (let i = 0; i < plan.length; i++) {
               currentStepIndex = i + 1;
               const step = plan[i];
-              
+
               log(`\n📍 STEP ${currentStepIndex}/${plan.length}: ${step.description}`, 'INFO');
-              
+
               await takeScreenshot(`before-step-${currentStepIndex}`);
-              
+
               const stepPrompt = `You are now executing step ${currentStepIndex} of your plan:
-              
+
 Step: ${step.description}
 Reasoning: ${step.reasoning || 'N/A'}
 
@@ -446,17 +446,17 @@ Available actions: goto, click, type, press, scroll, wait, screenshot, extract_t
 Be specific and use proper selectors (ID, class, or CSS selector).`;
 
               const response = await askGemini(stepPrompt, true);
-              
+
               const jsonMatch = response.match(/\[[\s\S]*?\](?=\s*$|\s*```|\s*\n\n)/);
               if (jsonMatch) {
                 try {
                   const actions = JSON.parse(jsonMatch[0]);
-                  
+
                   for (const action of actions) {
                     await executeAction(action);
                     await page.waitForTimeout(1000);
                   }
-                  
+
                   await takeScreenshot(`after-step-${currentStepIndex}`);
                 } catch (e) {
                   log(`⚠️ Error parsing/executing actions: ${e.message}`, 'ERROR');
@@ -465,9 +465,9 @@ Be specific and use proper selectors (ID, class, or CSS selector).`;
                 log('⚠️ No valid action JSON found in response', 'WARN');
               }
             }
-            
+
             log('\n✅ Task execution completed', 'SUCCESS');
-            
+
             const summaryPrompt = `Task completed: "${TASK_DESCRIPTION}"
 
 Based on all the actions taken (logged above), provide a concise summary report:
@@ -480,7 +480,7 @@ Format as a clear, structured summary.`;
 
             const summary = await askGemini(summaryPrompt, false);
             log('\n📊 FINAL SUMMARY:\n' + summary, 'SUMMARY');
-            
+
             return { success: true, summary, actionLog };
           }
 
@@ -514,9 +514,9 @@ Format as a clear, structured summary.`;
           executeTask().then(async (result) => {
             log('🎬 Task completed, keeping server alive for review...');
             log(`Total actions logged: ${actionLog.length}`);
-            
+
             await page.waitForTimeout(60000);
-            
+
             if (browser) await browser.close();
             log('👋 Browser closed, shutting down...');
             process.exit(0);
@@ -533,15 +533,15 @@ Format as a clear, structured summary.`;
           echo "🔗 Starting ngrok tunnel..."
           ngrok http 3000 --log=stdout > ngrok.log 2>&1 &
           sleep 5
-          
+
           NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o '"public_url":"https://[^"]*' | grep -o 'https://.*' | head -1)
-          
+
           if [ -z "$NGROK_URL" ]; then
             echo "⚠️ Could not get ngrok URL, checking logs..."
             cat ngrok.log || true
             NGROK_URL="http://localhost:3000"
           fi
-          
+
           echo "NGROK_URL=$NGROK_URL" >> $GITHUB_ENV
           echo "✅ Ngrok URL: $NGROK_URL"
 
@@ -561,16 +561,16 @@ Format as a clear, structured summary.`;
           echo "🔍 Web Search: $ENABLE_WEB_SEARCH"
           echo "🎭 Headless: $HEADLESS"
           echo ""
-          
+
           node autonomous-agent.js
           EXIT_CODE=$?
-          
+
           echo ""
           echo "=================================="
           echo "🏁 Agent execution finished"
           echo "Exit code: $EXIT_CODE"
           echo "=================================="
-          
+
           exit $EXIT_CODE
 
       - name: Upload Screenshots
@@ -609,22 +609,22 @@ Format as a clear, structured summary.`;
           echo "- **Headless Mode**: ${{ github.event.inputs.headless }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Run Number**: #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           SCREENSHOT_COUNT=$(find browser-automation/screenshots -type f 2>/dev/null | wc -l || echo "0")
           VIDEO_COUNT=$(find browser-automation/videos -type f 2>/dev/null | wc -l || echo "0")
-          
+
           echo "### 📊 Execution Metrics" >> $GITHUB_STEP_SUMMARY
           echo "- 📸 Screenshots Captured: $SCREENSHOT_COUNT" >> $GITHUB_STEP_SUMMARY
           echo "- 🎬 Videos Recorded: $VIDEO_COUNT" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ -f browser-automation/logs/automation.log ]; then
             echo "### 📝 Key Log Entries" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             grep -E "\[SUCCESS\]|\[ERROR\]|\[SUMMARY\]" browser-automation/logs/automation.log | tail -20 >> $GITHUB_STEP_SUMMARY || true
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "Download screenshots, videos, and full logs from the artifacts section above." >> $GITHUB_STEP_SUMMARY

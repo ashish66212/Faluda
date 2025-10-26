@@ -177,7 +177,7 @@ Think step-by-step:
 - Adjust plan if needed
 - Provide final summary
 
-Be proactive, decisive, and thorough. Act as if you're a skilled human operator with AI superpowers.`;
+Be proactive, decisive, and thorough. Act as if you're a skilled human operator with AI superpowers.\`;
 
           function log(message, level = 'INFO') {
             const timestamp = new Date().toISOString();

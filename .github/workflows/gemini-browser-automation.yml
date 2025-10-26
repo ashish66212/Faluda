@@ -223,18 +223,36 @@ jobs:
                     if (!confirmed) return { success: false, message: 'Action cancelled by user' };
                   }
                   
-                  if (command.text) {
-                    await page.getByText(command.text).click();
-                  } else {
-                    await page.click(command.selector);
+                  try {
+                    if (command.text) {
+                      await page.getByText(command.text).click({ timeout: 5000 });
+                    } else {
+                      await page.waitForSelector(command.selector, { timeout: 5000 });
+                      await page.click(command.selector);
+                    }
+                    log(`✅ Clicked: ${clickSelector}`);
+                  } catch (clickError) {
+                    log(`⚠️ Click target "${clickSelector}" not found or not clickable`, 'WARN');
+                    throw new Error(`Element "${clickSelector}" not found or not clickable on the page.`);
                   }
-                  log(`✅ Clicked: ${clickSelector}`);
                   await takeScreenshot(`click-${Date.now()}.png`);
                   break;
 
                 case 'type':
-                  await page.fill(command.selector, command.text);
-                  log(`✅ Typed text into: ${command.selector}`);
+                  try {
+                    await page.waitForSelector(command.selector, { timeout: 5000 });
+                    await page.fill(command.selector, command.text);
+                    log(`✅ Typed text into: ${command.selector}`);
+                  } catch (selectorError) {
+                    log(`⚠️ Selector "${command.selector}" not found, trying alternative methods...`, 'WARN');
+                    const inputFields = await page.$$('input[type="text"], input[type="search"], input:not([type])');
+                    if (inputFields.length > 0) {
+                      await inputFields[0].fill(command.text);
+                      log(`✅ Typed text into first available input field`);
+                    } else {
+                      throw new Error(`No input fields found. Selector "${command.selector}" does not exist on the page.`);
+                    }
+                  }
                   break;
 
                 case 'press':
@@ -247,9 +265,15 @@ jobs:
                   return { success: true, filepath };
 
                 case 'extract':
-                  const text = await page.textContent(command.selector);
-                  log(`📄 Extracted text: ${text}`);
-                  return { success: true, text };
+                  try {
+                    await page.waitForSelector(command.selector, { timeout: 5000 });
+                    const text = await page.textContent(command.selector);
+                    log(`📄 Extracted text: ${text}`);
+                    return { success: true, text };
+                  } catch (extractError) {
+                    log(`⚠️ Selector "${command.selector}" not found for extraction`, 'WARN');
+                    throw new Error(`Cannot extract text: selector "${command.selector}" not found on the page.`);
+                  }
 
                 case 'scroll':
                   await page.evaluate(() => window.scrollBy(0, window.innerHeight));
@@ -282,10 +306,15 @@ jobs:
 
             const prompt = `You are controlling a web browser via Playwright. Current task: ${task}
 
+          IMPORTANT: Carefully analyze the screenshot to identify the CORRECT selectors. Common selectors for search inputs:
+          - Wikipedia: input#searchInput or input[name="search"]
+          - Google: input[name="q"] or textarea[name="q"]
+          - Generic: input[type="search"], input[type="text"], or input[placeholder*="search" i]
+
           Available actions (respond with JSON):
           - {"action": "navigate", "url": "https://..."}
           - {"action": "click", "selector": "button.submit"} or {"action": "click", "text": "Submit"}
-          - {"action": "type", "selector": "input#search", "text": "query"}
+          - {"action": "type", "selector": "input[name='search']", "text": "query"}
           - {"action": "press", "key": "Enter"}
           - {"action": "screenshot", "name": "result.png"}
           - {"action": "extract", "selector": "h1"}
@@ -294,7 +323,7 @@ jobs:
 
           For destructive actions (delete, submit, purchase), add "confirm": true.
 
-          Analyze the screenshot and provide the next action as JSON. If task is complete, respond with {"action": "complete", "summary": "description"}.`;
+          Analyze the screenshot carefully and provide the next action as JSON. Use specific selectors based on what you see in the screenshot (like input[name="..."], input#..., button.classname). If task is complete, respond with {"action": "complete", "summary": "description"}.`;
 
             const result = await model.generateContent([
               { text: prompt },

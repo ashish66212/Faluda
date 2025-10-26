@@ -2,7 +2,6 @@ name: Gemini Autonomous AI Browser Agent
 
 on:
   workflow_dispatch:
-    branches:
       - main   # is branch pe hi manual trigger allow hoga
     inputs:
       task_description:

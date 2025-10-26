@@ -27,7 +27,7 @@ on:
 jobs:
   autonomous-browser-agent:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ fromJSON(github.event.inputs.timeout_minutes) }}
+    timeout-minutes: ${{ github.event.inputs.timeout_minutes || 45 }}
     
     steps:
       - name: Setup Autonomous AI Environment
@@ -171,11 +171,11 @@ Available Browser Actions:
 - evaluate_js(code): Run JavaScript in browser
 
 Think step-by-step:
-• Analyze the user request
-• Create a multi-step plan
-• Execute each step while monitoring results
-• Adjust plan if needed
-• Provide final summary
+- Analyze the user request
+- Create a multi-step plan
+- Execute each step while monitoring results
+- Adjust plan if needed
+- Provide final summary
 
 Be proactive, decisive, and thorough. Act as if you're a skilled human operator with AI superpowers.`;
 

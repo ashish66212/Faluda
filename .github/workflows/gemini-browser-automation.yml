@@ -225,9 +225,9 @@ jobs:
                   
                   try {
                     if (command.text) {
-                      await page.getByText(command.text).click({ timeout: 5000 });
+                      await page.getByText(command.text).click({ timeout: 15000 });
                     } else {
-                      await page.waitForSelector(command.selector, { timeout: 5000 });
+                      await page.waitForSelector(command.selector, { timeout: 15000 });
                       await page.click(command.selector);
                     }
                     log(`✅ Clicked: ${clickSelector}`);
@@ -240,17 +240,35 @@ jobs:
 
                 case 'type':
                   try {
-                    await page.waitForSelector(command.selector, { timeout: 5000 });
+                    await page.waitForSelector(command.selector, { timeout: 15000, state: 'visible' });
                     await page.fill(command.selector, command.text);
                     log(`✅ Typed text into: ${command.selector}`);
                   } catch (selectorError) {
-                    log(`⚠️ Selector "${command.selector}" not found, trying alternative methods...`, 'WARN');
-                    const inputFields = await page.$$('input[type="text"], input[type="search"], input:not([type])');
-                    if (inputFields.length > 0) {
-                      await inputFields[0].fill(command.text);
-                      log(`✅ Typed text into first available input field`);
-                    } else {
-                      throw new Error(`No input fields found. Selector "${command.selector}" does not exist on the page.`);
+                    log(`⚠️ Selector "${command.selector}" not found, trying alternative search input selectors...`, 'WARN');
+                    const commonSearchSelectors = [
+                      'input#searchInput',
+                      'input[name="search"]',
+                      'input[name="q"]',
+                      'input[type="search"]',
+                      'input[placeholder*="search" i]',
+                      'textarea[name="q"]'
+                    ];
+                    
+                    let filled = false;
+                    for (const selector of commonSearchSelectors) {
+                      try {
+                        await page.waitForSelector(selector, { timeout: 2000, state: 'visible' });
+                        await page.fill(selector, command.text);
+                        log(`✅ Typed text using alternative selector: ${selector}`);
+                        filled = true;
+                        break;
+                      } catch (e) {
+                        continue;
+                      }
+                    }
+                    
+                    if (!filled) {
+                      throw new Error(`Selector "${command.selector}" not found and no alternative search inputs detected on the page.`);
                     }
                   }
                   break;
@@ -266,7 +284,7 @@ jobs:
 
                 case 'extract':
                   try {
-                    await page.waitForSelector(command.selector, { timeout: 5000 });
+                    await page.waitForSelector(command.selector, { timeout: 15000 });
                     const text = await page.textContent(command.selector);
                     log(`📄 Extracted text: ${text}`);
                     return { success: true, text };

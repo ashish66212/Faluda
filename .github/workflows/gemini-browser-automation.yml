@@ -1,0 +1,498 @@
+name: Gemini AI Browser Control
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_description:
+        description: 'Task for Gemini AI to perform in the browser'
+        required: true
+        default: 'Navigate to google.com and search for "GitHub Actions"'
+      headless:
+        description: 'Run browser in headless mode'
+        required: false
+        default: 'false'
+      timeout_minutes:
+        description: 'Maximum runtime in minutes'
+        required: false
+        default: '30'
+
+jobs:
+  browser-automation:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(github.event.inputs.timeout_minutes) }}
+    
+    steps:
+      - name: Setup Complete Browser Automation Environment
+        run: |
+          echo "🚀 Setting up Gemini AI Browser Automation Environment"
+          mkdir -p browser-automation/videos browser-automation/screenshots
+          cd browser-automation
+
+      - name: Create package.json
+        run: |
+          cd browser-automation
+          cat > package.json << 'PACKAGE_EOF'
+          {
+            "name": "gemini-browser-automation",
+            "version": "1.0.0",
+            "description": "Gemini AI-powered browser automation with Playwright and stealth mode",
+            "main": "gemini-browser-controller.js",
+            "type": "module",
+            "dependencies": {
+              "@google/generative-ai": "^0.21.0",
+              "express": "^4.21.2",
+              "playwright": "^1.49.1",
+              "playwright-extra": "^4.3.6",
+              "puppeteer-extra-plugin-stealth": "^2.11.2"
+            }
+          }
+          PACKAGE_EOF
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: browser-automation
+        run: npm install
+
+      - name: Install Playwright browsers
+        working-directory: browser-automation
+        run: npx playwright install chromium --with-deps
+
+      - name: Setup ngrok
+        run: |
+          echo "📡 Installing ngrok..."
+          wget -q https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz
+          tar xzf ngrok-v3-stable-linux-amd64.tgz
+          sudo mv ngrok /usr/local/bin/
+          ngrok authtoken ${{ secrets.NGROK_AUTHTOKEN }}
+          echo "✅ ngrok authenticated"
+
+      - name: Create Gemini Browser Controller
+        run: |
+          cd browser-automation
+          cat > gemini-browser-controller.js << 'CONTROLLER_EOF'
+          import { chromium } from 'playwright';
+          import express from 'express';
+          import { GoogleGenerativeAI } from '@google/generative-ai';
+          import fs from 'fs';
+          import path from 'path';
+
+          const app = express();
+          app.use(express.json());
+
+          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+          const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+          let browser = null;
+          let page = null;
+          let context = null;
+          let pendingConfirmation = null;
+          let actionLog = [];
+          let screenshotCounter = 0;
+
+          const HEADLESS = process.env.HEADLESS === 'true';
+          const TASK_DESCRIPTION = process.env.TASK_DESCRIPTION || 'Navigate to google.com';
+
+          function log(message, level = 'INFO') {
+            const timestamp = new Date().toISOString();
+            const logMessage = `[${timestamp}] [${level}] ${message}`;
+            console.log(logMessage);
+            actionLog.push(logMessage);
+            
+            const logFile = 'automation.log';
+            fs.appendFileSync(logFile, logMessage + '\n');
+          }
+
+          async function initBrowser() {
+            log('🎭 Initializing Chromium browser with stealth mode...');
+            
+            browser = await chromium.launch({
+              headless: HEADLESS,
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-features=IsolateOrigins,site-per-process'
+              ]
+            });
+
+            context = await browser.newContext({
+              viewport: { width: 1920, height: 1080 },
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              recordVideo: {
+                dir: 'videos/',
+                size: { width: 1920, height: 1080 }
+              }
+            });
+
+            await context.addInitScript(() => {
+              Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+              Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+              Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+            });
+
+            page = await context.newPage();
+            
+            page.on('console', msg => log(`Browser Console: ${msg.text()}`));
+            page.on('pageerror', err => log(`Page Error: ${err.message}`, 'ERROR'));
+            
+            log('✅ Browser initialized successfully');
+            return page;
+          }
+
+          async function takeScreenshot(name = null) {
+            if (!page) return null;
+            
+            screenshotCounter++;
+            const filename = name || `screenshot-${screenshotCounter}-${Date.now()}.png`;
+            const filepath = path.join('screenshots', filename);
+            
+            await page.screenshot({ path: filepath, fullPage: true });
+            log(`📸 Screenshot saved: ${filename}`);
+            return filepath;
+          }
+
+          async function requestConfirmation(action, reason) {
+            log(`⚠️ Requesting user confirmation for: ${action}`, 'WARN');
+            log(`Reason: ${reason}`, 'WARN');
+            
+            pendingConfirmation = {
+              action,
+              reason,
+              timestamp: Date.now()
+            };
+
+            return new Promise((resolve) => {
+              const checkInterval = setInterval(() => {
+                if (!pendingConfirmation) {
+                  clearInterval(checkInterval);
+                  resolve(true);
+                } else if (Date.now() - pendingConfirmation.timestamp > 300000) {
+                  clearInterval(checkInterval);
+                  pendingConfirmation = null;
+                  log('❌ Confirmation timeout - action cancelled', 'ERROR');
+                  resolve(false);
+                }
+              }, 1000);
+            });
+          }
+
+          async function executeBrowserAction(command) {
+            if (!page) {
+              await initBrowser();
+            }
+
+            try {
+              log(`🎯 Executing: ${command.action}`);
+
+              switch (command.action) {
+                case 'navigate':
+                  await page.goto(command.url, { waitUntil: 'networkidle' });
+                  log(`✅ Navigated to: ${command.url}`);
+                  await takeScreenshot(`navigate-${Date.now()}.png`);
+                  break;
+
+                case 'click':
+                  const clickSelector = command.selector || command.text;
+                  if (command.confirm) {
+                    const confirmed = await requestConfirmation(
+                      `Click on: ${clickSelector}`,
+                      'This action may trigger navigation or form submission'
+                    );
+                    if (!confirmed) return { success: false, message: 'Action cancelled by user' };
+                  }
+                  
+                  if (command.text) {
+                    await page.getByText(command.text).click();
+                  } else {
+                    await page.click(command.selector);
+                  }
+                  log(`✅ Clicked: ${clickSelector}`);
+                  await takeScreenshot(`click-${Date.now()}.png`);
+                  break;
+
+                case 'type':
+                  await page.fill(command.selector, command.text);
+                  log(`✅ Typed text into: ${command.selector}`);
+                  break;
+
+                case 'press':
+                  await page.keyboard.press(command.key);
+                  log(`✅ Pressed key: ${command.key}`);
+                  break;
+
+                case 'screenshot':
+                  const filepath = await takeScreenshot(command.name);
+                  return { success: true, filepath };
+
+                case 'extract':
+                  const text = await page.textContent(command.selector);
+                  log(`📄 Extracted text: ${text}`);
+                  return { success: true, text };
+
+                case 'scroll':
+                  await page.evaluate(() => window.scrollBy(0, window.innerHeight));
+                  log('✅ Scrolled page');
+                  break;
+
+                case 'wait':
+                  await page.waitForTimeout(command.ms || 1000);
+                  log(`⏳ Waited ${command.ms}ms`);
+                  break;
+
+                default:
+                  throw new Error(`Unknown action: ${command.action}`);
+              }
+
+              return { success: true };
+            } catch (error) {
+              log(`❌ Error executing ${command.action}: ${error.message}`, 'ERROR');
+              await takeScreenshot(`error-${Date.now()}.png`);
+              return { success: false, error: error.message };
+            }
+          }
+
+          async function processTaskWithGemini(task) {
+            log(`🤖 Processing task with Gemini: ${task}`);
+            
+            const screenshot = await takeScreenshot('gemini-context.png');
+            const screenshotData = fs.readFileSync(screenshot);
+            const base64Image = screenshotData.toString('base64');
+
+            const prompt = `You are controlling a web browser via Playwright. Current task: ${task}
+
+          Available actions (respond with JSON):
+          - {"action": "navigate", "url": "https://..."}
+          - {"action": "click", "selector": "button.submit"} or {"action": "click", "text": "Submit"}
+          - {"action": "type", "selector": "input#search", "text": "query"}
+          - {"action": "press", "key": "Enter"}
+          - {"action": "screenshot", "name": "result.png"}
+          - {"action": "extract", "selector": "h1"}
+          - {"action": "scroll"}
+          - {"action": "wait", "ms": 2000}
+
+          For destructive actions (delete, submit, purchase), add "confirm": true.
+
+          Analyze the screenshot and provide the next action as JSON. If task is complete, respond with {"action": "complete", "summary": "description"}.`;
+
+            const result = await model.generateContent([
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: base64Image
+                }
+              }
+            ]);
+
+            const response = result.response.text();
+            log(`🤖 Gemini response: ${response}`);
+
+            const jsonMatch = response.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              return JSON.parse(jsonMatch[0]);
+            }
+
+            return null;
+          }
+
+          async function runAutomatedTask() {
+            log('🚀 Starting automated task execution');
+            
+            let attempts = 0;
+            const maxAttempts = 20;
+
+            while (attempts < maxAttempts) {
+              attempts++;
+              log(`\n--- Attempt ${attempts}/${maxAttempts} ---`);
+
+              const command = await processTaskWithGemini(TASK_DESCRIPTION);
+              
+              if (!command) {
+                log('⚠️ No valid command from Gemini', 'WARN');
+                break;
+              }
+
+              if (command.action === 'complete') {
+                log(`✅ Task completed: ${command.summary}`, 'SUCCESS');
+                await takeScreenshot('final-result.png');
+                break;
+              }
+
+              const result = await executeBrowserAction(command);
+              
+              if (!result.success) {
+                log(`⚠️ Action failed, asking Gemini for recovery...`, 'WARN');
+              }
+
+              await page.waitForTimeout(2000);
+            }
+
+            log(`\n📊 Automation Summary:`);
+            log(`Total attempts: ${attempts}`);
+            log(`Screenshots taken: ${screenshotCounter}`);
+          }
+
+          app.post('/command', async (req, res) => {
+            const command = req.body;
+            log(`📨 Received command: ${JSON.stringify(command)}`);
+            
+            const result = await executeBrowserAction(command);
+            res.json(result);
+          });
+
+          app.get('/status', (req, res) => {
+            res.json({
+              running: browser !== null,
+              pendingConfirmation,
+              actionCount: actionLog.length,
+              screenshots: screenshotCounter
+            });
+          });
+
+          app.post('/confirm', (req, res) => {
+            if (pendingConfirmation) {
+              log('✅ User confirmed action');
+              pendingConfirmation = null;
+              res.json({ success: true });
+            } else {
+              res.json({ success: false, message: 'No pending confirmation' });
+            }
+          });
+
+          app.get('/screenshot', async (req, res) => {
+            const filepath = await takeScreenshot();
+            res.sendFile(path.resolve(filepath));
+          });
+
+          app.get('/logs', (req, res) => {
+            res.json({ logs: actionLog });
+          });
+
+          const PORT = 3000;
+          app.listen(PORT, async () => {
+            log(`🌐 Server listening on port ${PORT}`);
+            log(`📋 Task: ${TASK_DESCRIPTION}`);
+            
+            await initBrowser();
+            
+            setTimeout(async () => {
+              await runAutomatedTask();
+              
+              log('🎬 Closing browser and saving video...');
+              await context.close();
+              await browser.close();
+              
+              log('✅ All done! Check artifacts for screenshots and videos.');
+              
+              setTimeout(() => process.exit(0), 5000);
+            }, 10000);
+          });
+          CONTROLLER_EOF
+
+      - name: Start Browser Automation with ngrok Tunnel
+        working-directory: browser-automation
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TASK_DESCRIPTION: ${{ github.event.inputs.task_description }}
+          HEADLESS: ${{ github.event.inputs.headless }}
+        run: |
+          echo "🚀 Starting Gemini AI Browser Control..."
+          echo "📋 Task: $TASK_DESCRIPTION"
+          
+          node gemini-browser-controller.js &
+          CONTROLLER_PID=$!
+          
+          sleep 5
+          
+          echo "🌐 Starting ngrok tunnel..."
+          ngrok http 3000 --log=stdout > ngrok.log 2>&1 &
+          NGROK_PID=$!
+          
+          sleep 5
+          
+          NGROK_URL=$(curl -s http://localhost:4040/api/tunnels | grep -o '"public_url":"https://[^"]*' | grep -o 'https://[^"]*' | head -1)
+          
+          if [ -z "$NGROK_URL" ]; then
+            echo "⚠️ Could not retrieve ngrok URL, checking logs..."
+            cat ngrok.log
+          else
+            echo "✅ Public endpoint: $NGROK_URL"
+            echo "NGROK_URL=$NGROK_URL" >> $GITHUB_ENV
+            
+            echo "### 🌐 Browser Control Endpoint" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Public URL**: \`$NGROK_URL\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "#### 🎮 Available Endpoints:" >> $GITHUB_STEP_SUMMARY
+            echo "- \`POST $NGROK_URL/command\` - Send browser command" >> $GITHUB_STEP_SUMMARY
+            echo "- \`GET $NGROK_URL/status\` - Get current status" >> $GITHUB_STEP_SUMMARY
+            echo "- \`GET $NGROK_URL/screenshot\` - Get current screenshot" >> $GITHUB_STEP_SUMMARY
+            echo "- \`POST $NGROK_URL/confirm\` - Confirm pending action" >> $GITHUB_STEP_SUMMARY
+            echo "- \`GET $NGROK_URL/logs\` - View action logs" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "#### 📝 Example Command:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "curl -X POST $NGROK_URL/command \\" >> $GITHUB_STEP_SUMMARY
+            echo "  -H 'Content-Type: application/json' \\" >> $GITHUB_STEP_SUMMARY
+            echo "  -d '{\"action\": \"navigate\", \"url\": \"https://google.com\"}'" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          wait $CONTROLLER_PID
+          EXIT_CODE=$?
+          
+          kill $NGROK_PID 2>/dev/null || true
+          
+          echo "✅ Automation completed with exit code: $EXIT_CODE"
+          exit $EXIT_CODE
+
+      - name: Upload Screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-${{ github.run_number }}
+          path: browser-automation/screenshots/
+          retention-days: 30
+
+      - name: Upload Videos
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: videos-${{ github.run_number }}
+          path: browser-automation/videos/
+          retention-days: 30
+
+      - name: Upload Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: logs-${{ github.run_number }}
+          path: |
+            browser-automation/automation.log
+            browser-automation/ngrok.log
+          retention-days: 30
+
+      - name: Generate Summary Report
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Task**: ${{ github.event.inputs.task_description }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run Number**: #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Headless Mode**: ${{ github.event.inputs.headless }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          SCREENSHOT_COUNT=$(find browser-automation/screenshots -type f 2>/dev/null | wc -l)
+          VIDEO_COUNT=$(find browser-automation/videos -type f 2>/dev/null | wc -l)
+          
+          echo "#### 📦 Artifacts:" >> $GITHUB_STEP_SUMMARY
+          echo "- 📸 Screenshots: $SCREENSHOT_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- 🎬 Videos: $VIDEO_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Download artifacts from the workflow summary above." >> $GITHUB_STEP_SUMMARY

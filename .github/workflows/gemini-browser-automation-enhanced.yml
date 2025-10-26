@@ -361,11 +361,11 @@ Be proactive, decisive, and thorough. Act as if you're a skilled human operator 
 
 Create a detailed, step-by-step execution plan to complete this task autonomously. 
 Think deeply about:
-1. What information do you need? (Use web search if needed)
-2. What websites or tools are best for this task?
-3. What steps must happen in sequence?
-4. What could go wrong and how to handle it?
-5. What's the final deliverable?
+  1. What information do you need? (Use web search if needed)
+  2. What websites or tools are best for this task?
+  3. What steps must happen in sequence?
+  4. What could go wrong and how to handle it?
+  5. What's the final deliverable?
 
 Return your plan as a JSON array of steps:
 [
@@ -470,10 +470,10 @@ Be specific and use proper selectors (ID, class, or CSS selector).`;
             const summaryPrompt = `Task completed: "${TASK_DESCRIPTION}"
 
 Based on all the actions taken (logged above), provide a concise summary report:
-1. What was accomplished?
-2. Key findings or results
-3. Any issues encountered
-4. Final status (success/partial/failed)
+  1. What was accomplished?
+  2. Key findings or results
+  3. Any issues encountered
+  4. Final status (success/partial/failed)
 
 Format as a clear, structured summary.`;
 

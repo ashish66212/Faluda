@@ -2,11 +2,14 @@ name: Gemini Autonomous AI Browser Agent
 
 on:
   workflow_dispatch:
+    branches:
+      - main   # is branch pe hi manual trigger allow hoga
     inputs:
       task_description:
         description: 'High-level task for Gemini AI (e.g., "Book train ticket Delhi to Mumbai next Thursday")'
         required: true
         default: 'Research the latest developments in AI and create a summary'
+        
       headless:
         description: 'Run browser in headless mode'
         required: false

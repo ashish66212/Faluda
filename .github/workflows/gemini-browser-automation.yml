@@ -404,7 +404,7 @@ jobs:
           echo "🚀 Starting Gemini AI Browser Control..."
           echo "📋 Task: $TASK_DESCRIPTION"
           
-          node gemini-browser-controller.js &
+          xvfb-run node gemini-browser-controller.js &
           CONTROLLER_PID=$!
           
           sleep 5

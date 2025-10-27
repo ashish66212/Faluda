@@ -22,12 +22,12 @@ class BoardGridView @JvmOverloads constructor(
     }
 
     private val textPaint = Paint().apply {
-        color = Color.parseColor("#1976D2")
-        textSize = 32f
-        textAlign = Paint.Align.CENTER
-        isAntiAlias = true
-        isFakeBoldText = true
-    }
+    color = Color.BLACK  // Change to black for better contrast
+    textSize = 48f       // Increase text size
+    textAlign = Paint.Align.CENTER
+    isAntiAlias = true
+    isFakeBoldText = true
+}
 
     private val backgroundPaint = Paint().apply {
         color = Color.parseColor("#E8F5E9")

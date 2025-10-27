@@ -59,8 +59,9 @@ class BoardGridView @JvmOverloads constructor(
         val squareWidth = width / 8f
         val squareHeight = height / 8f
 
-        for (rank in 0..7) {
-            for (file in 0..7) {
+        // FIXED: File outer loop, Rank inner loop for proper chess board mapping
+        for (file in 0..7) {
+            for (rank in 0..7) {
                 val left = file * squareWidth
                 val top = rank * squareHeight
                 val right = left + squareWidth
@@ -68,21 +69,25 @@ class BoardGridView @JvmOverloads constructor(
 
                 val rect = RectF(left, top, right, bottom)
                 
+                // Chess board coloring (light and dark squares)
                 if ((file + rank) % 2 == 0) {
                     canvas.drawRect(rect, backgroundPaint)
                 } else {
                     canvas.drawRect(rect, highlightPaint)
                 }
 
+                // Draw grid border
                 canvas.drawRect(rect, gridPaint)
 
-                val actualFile = file
-                val actualRank = if (isFlipped) rank else 7 - rank
+                // CORRECTED: Coordinate calculation for both orientations
+                val displayFile = if (isFlipped) 7 - file else file
+                val displayRank = if (isFlipped) rank else 7 - rank
 
-                val fileChar = files[actualFile]
-                val rankChar = ranks[actualRank]
+                val fileChar = files[displayFile]
+                val rankChar = ranks[displayRank]
                 val uciLabel = "$fileChar$rankChar"
 
+                // Text positioning
                 val centerX = left + squareWidth / 2f
                 val centerY = top + squareHeight / 2f + (textPaint.textSize / 3f)
 

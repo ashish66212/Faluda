@@ -51,100 +51,12 @@ class ChessBoardDetector {
      * Detects chessboard position and orientation automatically
      * Returns BoardConfig with X, Y, Size, and orientation
      */
-    fun detectBoardAutomatically(fullScreenBitmap: Bitmap): BoardConfig? {
-        try {
-            Log.d(TAG, "Starting automatic board detection...")
-            Log.d(TAG, "Image size: ${fullScreenBitmap.width}x${fullScreenBitmap.height}")
-            
-            val mat = bitmapToMat(fullScreenBitmap)
-            val gray = Mat()
-            Imgproc.cvtColor(mat, gray, Imgproc.COLOR_RGBA2GRAY)
-            
-            val edges = Mat()
-            Imgproc.Canny(gray, edges, 30.0, 100.0)
-            
-            val lines = Mat()
-            Imgproc.HoughLinesP(
-                edges, lines, 1.0, Math.PI / 180, 80, 200.0, 20.0
-            )
-            
-            val horizontalLines = mutableListOf<Int>()
-            val verticalLines = mutableListOf<Int>()
-            
-            for (i in 0 until lines.rows()) {
-                val line = lines.get(i, 0)
-                val x1 = line[0].toInt()
-                val y1 = line[1].toInt()
-                val x2 = line[2].toInt()
-                val y2 = line[3].toInt()
-                
-                val length = Math.sqrt(((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)).toDouble())
-                if (length < 100) continue
-                
-                val angle = Math.abs(Math.atan2((y2 - y1).toDouble(), (x2 - x1).toDouble()) * 180 / Math.PI)
-                
-                when {
-                    angle < 5 || angle > 175 -> {
-                        horizontalLines.add(Math.min(y1, y2))
-                        horizontalLines.add(Math.max(y1, y2))
-                    }
-                    angle in 85.0..95.0 -> {
-                        verticalLines.add(Math.min(x1, x2))
-                        verticalLines.add(Math.max(x1, x2))
-                    }
-                }
-            }
-            
-            val config = if (horizontalLines.size >= 2 && verticalLines.size >= 2) {
-                horizontalLines.sort()
-                verticalLines.sort()
-                
-                val boardTop = horizontalLines.first()
-                val boardBottom = horizontalLines.last()
-                val boardLeft = verticalLines.first()
-                val boardRight = verticalLines.last()
-                
-                val boardWidth = boardRight - boardLeft
-                val boardHeight = boardBottom - boardTop
-                val boardSize = Math.min(boardWidth, boardHeight)
-                
-                Log.d(TAG, "Line-based detection: X=$boardLeft, Y=$boardTop, Size=$boardSize")
-                
-                if (boardSize > 400) {
-                    val isWhiteBottom = detectOrientation(fullScreenBitmap, boardLeft, boardTop, boardSize)
-                    BoardConfig(boardLeft, boardTop, boardSize, isWhiteBottom)
-                } else {
-                    Log.d(TAG, "Board too small, using fallback")
-                    detectBoardFallback(fullScreenBitmap)
-                }
-            } else {
-                Log.d(TAG, "Not enough lines, using fallback")
-                detectBoardFallback(fullScreenBitmap)
-            }
-            
-            gray.release()
-            edges.release()
-            lines.release()
-            mat.release()
-            
-            return config
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Automatic board detection failed: ${e.message}")
-            e.printStackTrace()
-            return null
-        }
     }
     
     /**
      * IMPROVED Fallback board detection using intelligent region analysis
      * Analyzes the screen to find the chessboard based on color patterns
      */
-    private fun detectBoardFallback(fullScreenBitmap: Bitmap): BoardConfig {
-        val width = fullScreenBitmap.width
-        val height = fullScreenBitmap.height
-        
-        Log.d(TAG, "Running improved fallback detection on ${width}x${height} image")
         
         try {
             val mat = bitmapToMat(fullScreenBitmap)
@@ -215,57 +127,6 @@ class ChessBoardDetector {
     /**
      * Detect board orientation (white pieces on bottom?)
      */
-    private fun detectOrientation(bitmap: Bitmap, boardX: Int, boardY: Int, boardSize: Int): Boolean {
-        try {
-            val squareSize = boardSize / 8
-            
-            val bottomY = boardY + 6 * squareSize
-            val topY = boardY
-            
-            val bottomRegion = Bitmap.createBitmap(
-                bitmap, 
-                boardX, 
-                bottomY, 
-                boardSize, 
-                2 * squareSize
-            )
-            val topRegion = Bitmap.createBitmap(
-                bitmap,
-                boardX,
-                topY,
-                boardSize,
-                2 * squareSize
-            )
-            
-            val bottomMat = bitmapToMat(bottomRegion)
-            val topMat = bitmapToMat(topRegion)
-            
-            val bottomGray = Mat()
-            val topGray = Mat()
-            Imgproc.cvtColor(bottomMat, bottomGray, Imgproc.COLOR_RGBA2GRAY)
-            Imgproc.cvtColor(topMat, topGray, Imgproc.COLOR_RGBA2GRAY)
-            
-            val bottomMean = Core.mean(bottomGray).`val`[0]
-            val topMean = Core.mean(topGray).`val`[0]
-            
-            val isWhiteBottom = bottomMean > topMean
-            
-            Log.d(TAG, "Orientation: Bottom brightness=$bottomMean, Top brightness=$topMean")
-            Log.d(TAG, "White pieces on bottom: $isWhiteBottom")
-            
-            bottomRegion.recycle()
-            topRegion.recycle()
-            bottomMat.release()
-            topMat.release()
-            bottomGray.release()
-            topGray.release()
-            
-            return isWhiteBottom
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Orientation detection failed: ${e.message}")
-            return true
-        }
     }
     
     /**

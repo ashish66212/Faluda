@@ -278,15 +278,6 @@ class MoveDetectionOverlayService : Service() {
      * 4. Sends YOUR selected color to API
      * 5. Starts automatic move detection using OpenCV
      */
-    private fun startAutomaticWorkflow() {
-        addLog("startAutomaticWorkflow", "=== STARTING AUTOMATIC WORKFLOW ===")
-        
-        if (ngrokUrl.isEmpty()) {
-            updateStatus("⚠️ No server URL")
-            addLog("startAutomaticWorkflow", "FAILED - Server URL not configured!")
-            Toast.makeText(this, "Configure server URL in main app first", Toast.LENGTH_LONG).show()
-            return
-        }
         
         if (imageReader == null) {
             updateStatus("⚠️ No screen capture")
@@ -364,12 +355,6 @@ class MoveDetectionOverlayService : Service() {
     /**
      * Show red border around detected board area for 3 seconds
      */
-    private fun showBoardDetectionBorder() {
-        addLog("showBoardDetectionBorder", "Showing red border at X=$boardX, Y=$boardY, Size=$boardSize")
-        
-        val borderView = View(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-        }
         
         val layoutParams = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams(
@@ -443,105 +428,11 @@ class MoveDetectionOverlayService : Service() {
     /**
      * Send start command automatically (with callback)
      */
-    private fun sendStartCommandAutomatic(callback: (Boolean) -> Unit) {
-        addLog("sendStartCommandAutomatic", "Sending game start request...")
-        
-        Thread {
-            try {
-                val request = Request.Builder()
-                    .url("$ngrokUrl/start")
-                    .post("".toRequestBody(null))
-                    .build()
-                
-                client.newCall(request).enqueue(object : Callback {
-                    override fun onFailure(call: Call, e: IOException) {
-                        addLog("sendStartCommandAutomatic", "FAILED - ${e.message}")
-                        handler.post { callback(false) }
-                    }
-                    
-                    override fun onResponse(call: Call, response: Response) {
-                        val responseBody = response.body?.string() ?: ""
-                        addLog("sendStartCommandAutomatic", "Response ${response.code}: $responseBody")
-                        
-                        if (response.isSuccessful) {
-                            gameStarted = true
-                            addLog("sendStartCommandAutomatic", "✓ Game started successfully")
-                            handler.post { callback(true) }
-                        } else {
-                            addLog("sendStartCommandAutomatic", "FAILED - Server error ${response.code}")
-                            handler.post { callback(false) }
-                        }
-                    }
-                })
-            } catch (e: Exception) {
-                addLog("sendStartCommandAutomatic", "EXCEPTION - ${e.message}")
-                handler.post { callback(false) }
-            }
-        }.start()
     }
     
     /**
      * Send color command automatically (with callback)
      */
-    private fun sendColorCommandAutomatic(color: String, callback: (Boolean) -> Unit) {
-        addLog("sendColorCommandAutomatic", "Sending color: $color")
-        
-        Thread {
-            try {
-                val requestBody = color.toRequestBody(null)
-                val request = Request.Builder()
-                    .url("$ngrokUrl/move")
-                    .post(requestBody)
-                    .build()
-                
-                client.newCall(request).enqueue(object : Callback {
-                    override fun onFailure(call: Call, e: IOException) {
-                        addLog("sendColorCommandAutomatic", "FAILED - ${e.message}")
-                        handler.post { callback(false) }
-                    }
-                    
-                    override fun onResponse(call: Call, response: Response) {
-                        val responseBody = response.body?.string() ?: ""
-                        addLog("sendColorCommandAutomatic", "Response ${response.code}: $responseBody")
-                        
-                        if (response.isSuccessful) {
-                            addLog("sendColorCommandAutomatic", "✓ Color set to $color")
-                            
-                            // Extract any move from the response (for both white and black)
-                            val movePattern = "[a-h][1-8][a-h][1-8][qrbn]?".toRegex()
-                            val engineMove = movePattern.find(responseBody)?.value
-                            
-                            addLog("sendColorCommandAutomatic", "Extracted move from response: ${engineMove ?: "NONE"}")
-                            addLog("sendColorCommandAutomatic", "Auto-play enabled: $isAutoPlayEnabled")
-                            
-                            // If engine made first move, execute it automatically
-                            // - When user chose "white": we send "white" → user plays white → user moves first → no move to execute
-                            // - When user chose "black": we send "black" → user plays black → engine moves first (e.g., "e2e4") → execute it
-                            if (engineMove != null && isAutoPlayEnabled && responseBody.isNotEmpty()) {
-                                addLog("sendColorCommandAutomatic", "✓ Engine made first move: $engineMove - EXECUTING NOW")
-                                handler.post {
-                                    executeMoveAutomatically(engineMove)
-                                }
-                            } else {
-                                if (engineMove == null) {
-                                    addLog("sendColorCommandAutomatic", "No move to execute (engine didn't move first)")
-                                } else if (!isAutoPlayEnabled) {
-                                    addLog("sendColorCommandAutomatic", "Move found but auto-play is DISABLED")
-                                }
-                            }
-                            
-                            handler.post { callback(true) }
-                        } else {
-                            addLog("sendColorCommandAutomatic", "FAILED - Server error ${response.code}")
-                            handler.post { callback(false) }
-                        }
-                    }
-                })
-            } catch (e: Exception) {
-                addLog("sendColorCommandAutomatic", "EXCEPTION - ${e.message}")
-                handler.post { callback(false) }
-            }
-        }.start()
     }
     
     private fun sendStartCommand() {
@@ -1369,7 +1260,6 @@ private fun copyLogsToClipboard() {
             // AUTOMATIC BOARD DETECTION on first capture
             if (!boardAutoDetected) {
                 addLog("captureScreen", "=== AUTOMATIC BOARD DETECTION ===")
-                val detectedConfig = boardDetector.detectBoardAutomatically(fullBitmap)
                 
                 if (detectedConfig != null) {
                     boardX = detectedConfig.x

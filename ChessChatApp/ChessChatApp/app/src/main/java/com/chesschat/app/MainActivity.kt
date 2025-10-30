@@ -1,40 +1,24 @@
 package com.chesschat.app
 
-import android.app.AlertDialog
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
-import android.media.projection.MediaProjectionManager
-import android.net.Uri
-import android.os.Build
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.provider.Settings
-import android.view.KeyEvent
-import android.view.View
-import android.view.inputmethod.EditorInfo
-import android.widget.Button
-import android.widget.EditText
-import android.widget.TextView
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import okhttp3.*
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.IOException
-import java.text.SimpleDateFormat
-import java.util.*
+import android.os.Bundle
+import com.chesschat.app.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var chatTextView: TextView
-    private lateinit var inputEditText: EditText
-    private lateinit var sendButton: Button
-    private lateinit var menuButton: Button
-    private lateinit var menuOverlay: View
-    private lateinit var startButton: Button
-    private lateinit var blackButton: Button
-    private lateinit var whiteButton: Button
+    private lateinit var binding: ActivityMainBinding
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        // Filhaal button kuch nahi karega
+        binding.startButton.setOnClickListener {
+            // Yahan baad me code add karenge
+        }
+    }
+}    private lateinit var whiteButton: Button
     private lateinit var detectButton: Button
     private lateinit var sharedPreferences: SharedPreferences
     private val client = OkHttpClient()
